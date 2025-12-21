@@ -11,7 +11,8 @@ import {
   isSameMonth, 
   isSameDay, 
   addDays,
-  getDay
+  parse,
+  subMinutes
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { 
@@ -31,26 +32,44 @@ import {
   Moon,
   Leaf,
   Key,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Bell,
+  Clock,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
 import { SOLAR_HOLIDAYS } from './constants.tsx';
-import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal } from './services/supabaseClient.ts';
+import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal, getAllMemosLocal } from './services/supabaseClient.ts';
 import { calculateBiorhythm } from './services/biorhythmService.ts';
 import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
 const JIE_QI_MAP: Record<string, string> = {
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
+const OFFSET_LABELS: Record<ReminderOffset, string> = {
+  [ReminderOffset.AT_TIME]: '정시',
+  [ReminderOffset.MIN_10]: '10분 전',
+  [ReminderOffset.MIN_30]: '30분 전',
+  [ReminderOffset.HOUR_1]: '1시간 전',
+  [ReminderOffset.HOUR_2]: '2시간 전',
+  [ReminderOffset.HOUR_3]: '3시간 전',
+  [ReminderOffset.HOUR_6]: '6시간 전',
+  [ReminderOffset.DAY_1]: '1일 전',
+  [ReminderOffset.DAY_2]: '2일 전',
+  [ReminderOffset.DAY_3]: '3일 전',
+  [ReminderOffset.WEEK_1]: '1주일 전',
+  [ReminderOffset.MONTH_1]: '1달 전',
+};
+
 const App: React.FC = () => {
-  // API 키 상태 관리 (환경 변수 또는 로컬 스토리지)
   const [apiKey, setApiKey] = useState<string>(() => {
     return process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY') || '';
   });
@@ -61,7 +80,12 @@ const App: React.FC = () => {
   const [memos, setMemos] = useState<Memo[]>([]);
   const [newMemo, setNewMemo] = useState('');
   const [selectedType, setSelectedType] = useState<MemoType>(MemoType.TODO);
-  const [selectedRepeat, setSelectedRepeat] = useState<RepeatType>(RepeatType.NONE);
+  
+  // 알림 관련 상태
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState('09:00');
+  const [selectedOffsets, setSelectedOffsets] = useState<ReminderOffset[]>([ReminderOffset.AT_TIME]);
+  const [showReminderOptions, setShowReminderOptions] = useState(false);
   
   const [profile, setProfile] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('user_profile');
@@ -70,6 +94,10 @@ const App: React.FC = () => {
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
+  // 이미 알림이 울린 메모 ID와 오프셋 조합을 추적하여 중복 알림 방지
+  const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
 
   const loadMemos = useCallback(() => {
     const data = getMemosForDate(selectedDate);
@@ -80,7 +108,64 @@ const App: React.FC = () => {
     loadMemos();
   }, [loadMemos]);
 
-  // API 키가 설정되면 운세 가져오기
+  // 알림 및 메모 개별 알림 체크 로직
+  useEffect(() => {
+    const checkNotifications = () => {
+      const now = new Date();
+      const currentTimeStr = format(now, 'HH:mm');
+      const todayStr = format(now, 'yyyy-MM-dd');
+
+      // 1. 프로필 데일리 리마인더 체크
+      if (profile?.notifications_enabled && currentTimeStr === profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
+        const todayMemos = getMemosForDate(now);
+        const todoCount = todayMemos.filter(m => !m.completed).length;
+        
+        if (Notification.permission === 'granted') {
+          new Notification('Daily Harmony', {
+            body: `${profile.name}님, 오늘 ${todoCount}개의 일정이 있습니다.`,
+            icon: '/favicon.ico'
+          });
+          lastNotificationDate.current = todayStr;
+          localStorage.setItem('last_notif_date', todayStr);
+        }
+      }
+
+      // 2. 개별 메모 알림 체크
+      if (Notification.permission === 'granted') {
+        const allMemos = getAllMemosLocal();
+        allMemos.forEach(memo => {
+          if (!memo.reminder_time || !memo.reminder_offsets || memo.completed) return;
+
+          const memoDate = parse(memo.date, 'yyyy-MM-dd', new Date());
+          const [hours, minutes] = memo.reminder_time.split(':').map(Number);
+          const memoDateTime = new Date(memoDate);
+          memoDateTime.setHours(hours, minutes, 0, 0);
+
+          memo.reminder_offsets.forEach(offset => {
+            const notificationTime = subMinutes(memoDateTime, parseInt(offset));
+            const notificationTimeStr = format(notificationTime, 'yyyy-MM-dd HH:mm');
+            const nowStr = format(now, 'yyyy-MM-dd HH:mm');
+            
+            const notificationKey = `${memo.id}-${offset}-${notificationTimeStr}`;
+
+            if (notificationTimeStr === nowStr && !notifiedMemos.current.has(notificationKey)) {
+              new Notification('일정 알림', {
+                body: `[${OFFSET_LABELS[offset]}] ${memo.content}`,
+                icon: '/favicon.ico'
+              });
+              notifiedMemos.current.add(notificationKey);
+              // 성능을 위해 최근 100개만 유지하거나 주기적으로 청소할 수 있음
+              localStorage.setItem('notified_memos', JSON.stringify(Array.from(notifiedMemos.current).slice(-100)));
+            }
+          });
+        });
+      }
+    };
+
+    const intervalId = setInterval(checkNotifications, 10000); // 10초마다 체크
+    return () => clearInterval(intervalId);
+  }, [profile]);
+
   const fetchFortune = useCallback(async () => {
     if (apiKey && profile) {
       setLoadingFortune(true);
@@ -112,6 +197,40 @@ const App: React.FC = () => {
     }
   };
 
+  const toggleOffset = (offset: ReminderOffset) => {
+    setSelectedOffsets(prev => 
+      prev.includes(offset) 
+        ? prev.filter(o => o !== offset) 
+        : [...prev, offset]
+    );
+  };
+
+  const handleAddMemo = () => {
+    if (!newMemo.trim()) return;
+    saveMemoLocal({
+      date: format(selectedDate, 'yyyy-MM-dd'),
+      type: selectedType,
+      content: newMemo,
+      repeat_type: RepeatType.NONE,
+      reminder_time: reminderEnabled ? reminderTime : undefined,
+      reminder_offsets: reminderEnabled ? selectedOffsets : undefined,
+    });
+    setNewMemo('');
+    setReminderEnabled(false);
+    setShowReminderOptions(false);
+    loadMemos();
+  };
+
+  const handleToggleMemo = (id: string) => {
+    toggleMemoLocal(id);
+    loadMemos();
+  };
+
+  const handleDeleteMemo = (id: string) => {
+    deleteMemoLocal(id);
+    loadMemos();
+  };
+
   const getDayDetails = useCallback((date: Date) => {
     const lunar = Lunar.fromDate(date);
     const m = date.getMonth() + 1;
@@ -131,28 +250,6 @@ const App: React.FC = () => {
 
     return { holiday, dynamicHoliday, jieQi, lunar };
   }, []);
-
-  const handleAddMemo = () => {
-    if (!newMemo.trim()) return;
-    saveMemoLocal({
-      date: format(selectedDate, 'yyyy-MM-dd'),
-      type: selectedType,
-      content: newMemo,
-      repeat_type: selectedRepeat,
-    });
-    setNewMemo('');
-    loadMemos();
-  };
-
-  const handleToggleMemo = (id: string) => {
-    toggleMemoLocal(id);
-    loadMemos();
-  };
-
-  const handleDeleteMemo = (id: string) => {
-    deleteMemoLocal(id);
-    loadMemos();
-  };
 
   const renderCells = () => {
     const monthStart = startOfMonth(currentDate);
@@ -322,7 +419,6 @@ const App: React.FC = () => {
             <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12" size={180} />
           </div>
 
-          {/* 오늘의 AI 운세 카드 */}
           <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50 overflow-hidden relative">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center space-x-2">
@@ -365,14 +461,6 @@ const App: React.FC = () => {
                     <LinkIcon size={14} />
                     <span>AI 서비스 연결하기</span>
                   </button>
-                  <a 
-                    href="https://aistudio.google.com/app/apikey" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="block text-center text-[10px] text-indigo-400 hover:underline font-bold"
-                  >
-                    API 키 무료로 발급받기
-                  </a>
                 </div>
               </div>
             ) : !profile ? (
@@ -403,6 +491,7 @@ const App: React.FC = () => {
                <CalendarIcon className="text-indigo-600" size={18} />
                <h3 className="text-sm font-black text-gray-900">기록 추가</h3>
             </div>
+            
             <div className="flex flex-wrap gap-2 mb-5">
               {([ [MemoType.TODO, ListTodo, '할일'], [MemoType.IDEA, Lightbulb, '아이디어'], [MemoType.APPOINTMENT, CalendarCheck, '약속'] ] as const).map(([type, Icon, label]) => (
                 <button 
@@ -418,21 +507,71 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <div className="relative group">
-              <input 
-                type="text" 
-                value={newMemo}
-                onChange={(e) => setNewMemo(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()}
-                placeholder="어떤 일을 기록할까요?"
-                className="w-full bg-gray-50 border-transparent focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 rounded-2xl py-4 pl-5 pr-14 text-sm font-medium transition-all shadow-inner"
-              />
-              <button 
-                onClick={handleAddMemo}
-                className="absolute right-2.5 top-2.5 p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg"
-              >
-                <Plus size={20} />
-              </button>
+            <div className="space-y-4">
+              <div className="relative group">
+                <input 
+                  type="text" 
+                  value={newMemo}
+                  onChange={(e) => setNewMemo(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()}
+                  placeholder="어떤 일을 기록할까요?"
+                  className="w-full bg-gray-50 border-transparent focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 rounded-2xl py-4 pl-5 pr-14 text-sm font-medium transition-all shadow-inner"
+                />
+                <button 
+                  onClick={handleAddMemo}
+                  className="absolute right-2.5 top-2.5 p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+
+              {/* 알림 설정 UI */}
+              <div className="bg-gray-50/50 rounded-2xl p-4 border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <button 
+                    onClick={() => setShowReminderOptions(!showReminderOptions)}
+                    className="flex items-center space-x-2 text-xs font-bold text-gray-600 hover:text-indigo-600 transition-colors"
+                  >
+                    <Bell size={14} className={reminderEnabled ? "text-indigo-500" : "text-gray-400"} />
+                    <span>알림 설정</span>
+                    {showReminderOptions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  <button 
+                    onClick={() => setReminderEnabled(!reminderEnabled)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${reminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${reminderEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                {reminderEnabled && showReminderOptions && (
+                  <div className="mt-4 space-y-4 animate-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center space-x-3">
+                      <Clock size={14} className="text-gray-400" />
+                      <input 
+                        type="time" 
+                        value={reminderTime}
+                        onChange={(e) => setReminderTime(e.target.value)}
+                        className="bg-white border-none focus:ring-2 focus:ring-indigo-500 rounded-lg py-1.5 px-3 text-xs font-bold text-gray-700"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(OFFSET_LABELS) as ReminderOffset[]).map((offset) => (
+                        <button
+                          key={offset}
+                          onClick={() => toggleOffset(offset)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all border
+                            ${selectedOffsets.includes(offset)
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                              : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
+                        >
+                          {OFFSET_LABELS[offset]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -445,16 +584,31 @@ const App: React.FC = () => {
                 <p className="text-center py-10 text-sm font-bold text-gray-300">기록이 없습니다.</p>
               ) : (
                 memos.map((memo) => (
-                  <div key={memo.id} className="group flex items-center justify-between bg-white border border-gray-50 p-4 rounded-2xl hover:border-indigo-100 transition-all">
-                    <div className="flex items-center space-x-4 flex-1 min-w-0">
-                      <button onClick={() => handleToggleMemo(memo.id)} className="shrink-0 transition-transform active:scale-90">
-                        {memo.completed ? <CheckCircle2 className="text-emerald-500" size={22} /> : <Circle className="text-gray-200" size={22} />}
+                  <div key={memo.id} className="group flex flex-col bg-white border border-gray-50 p-4 rounded-2xl hover:border-indigo-100 transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4 flex-1 min-w-0">
+                        <button onClick={() => handleToggleMemo(memo.id)} className="shrink-0 transition-transform active:scale-90">
+                          {memo.completed ? <CheckCircle2 className="text-emerald-500" size={22} /> : <Circle className="text-gray-200" size={22} />}
+                        </button>
+                        <span className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{memo.content}</span>
+                      </div>
+                      <button onClick={() => handleDeleteMemo(memo.id)} className="text-gray-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 p-2 transition-all">
+                        <Trash2 size={16} />
                       </button>
-                      <span className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{memo.content}</span>
                     </div>
-                    <button onClick={() => handleDeleteMemo(memo.id)} className="text-gray-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 p-2 transition-all">
-                      <Trash2 size={16} />
-                    </button>
+                    {memo.reminder_time && memo.reminder_offsets && memo.reminder_offsets.length > 0 && (
+                      <div className="mt-2 ml-10 flex items-center space-x-2 overflow-x-auto scrollbar-hide">
+                        <Bell size={10} className="text-indigo-400 shrink-0" />
+                        <span className="text-[10px] font-bold text-indigo-400 whitespace-nowrap">{memo.reminder_time}</span>
+                        <div className="flex gap-1">
+                          {memo.reminder_offsets.map((off, idx) => (
+                            <span key={idx} className="bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded text-[9px] font-black whitespace-nowrap">
+                              {OFFSET_LABELS[off]}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}

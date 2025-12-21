@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { Memo, RepeatType } from '../types.ts';
+import { Memo, RepeatType, ReminderOffset } from '../types.ts';
 import { parseISO, format, getDay, getDate, getMonth, isSameDay } from 'date-fns';
 import { Lunar } from 'lunar-javascript';
 
@@ -63,7 +63,7 @@ export const saveMemoLocal = (memo: Partial<Memo>) => {
     created_at: new Date().toISOString(),
     repeat_type: memo.repeat_type || RepeatType.NONE,
     reminder_time: memo.reminder_time,
-    reminder_offset: memo.reminder_offset,
+    reminder_offsets: memo.reminder_offsets, // 다중 오프셋 저장
   };
   memos.push(newMemo);
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(memos));

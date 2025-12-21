@@ -19,13 +19,13 @@ export enum ReminderOffset {
   MIN_30 = '30',
   HOUR_1 = '60',
   HOUR_2 = '120',
+  HOUR_3 = '180',
   HOUR_6 = '360',
-  HOUR_12 = '720',
   DAY_1 = '1440',
   DAY_2 = '2880',
   DAY_3 = '4320',
   WEEK_1 = '10080',
-  WEEK_2 = '20160'
+  MONTH_1 = '43200'
 }
 
 export interface Memo {
@@ -38,7 +38,7 @@ export interface Memo {
   created_at: string;
   repeat_type: RepeatType;
   reminder_time?: string; // HH:mm
-  reminder_offset?: ReminderOffset;
+  reminder_offsets?: ReminderOffset[]; // 다중 선택 가능하도록 변경
 }
 
 export interface UserProfile {
