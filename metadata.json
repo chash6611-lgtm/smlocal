@@ -1,0 +1,5 @@
+{
+  "name": "Daily Harmony - Smart Memo & Insights",
+  "description": "A sophisticated daily memo application with Lunar calendar integration, Korean public holiday tracking, personalized AI-powered fortunes using Gemini, and biorhythm visualization.",
+  "requestFramePermissions": []
+}
