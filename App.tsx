@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   format, 
   addMonths, 
@@ -13,9 +13,7 @@ import {
   addDays,
   getDay,
   subMinutes,
-  parse,
-  addWeeks,
-  differenceInMinutes
+  parse
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { 
@@ -38,29 +36,27 @@ import {
   Bell,
   Clock,
   Leaf,
-  ChevronDown
+  Key
 } from 'lucide-react';
-import { Solar, Lunar } from 'lunar-javascript';
+import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
 import { SOLAR_HOLIDAYS } from './constants.tsx';
-import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal, getAllMemosLocal } from './services/supabaseClient.ts';
+import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal } from './services/supabaseClient.ts';
 import { calculateBiorhythm } from './services/biorhythmService.ts';
 import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// 24절기 한자 -> 한글 매핑 테이블
+// 24절기 매핑
 const JIE_QI_MAP: Record<string, string> = {
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '惊蛰': '경칩',
-  '春分': '춘분', '淸明': '청명', '清明': '청명', '穀雨': '곡우', '谷雨': '곡우',
-  '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '芒种': '망종',
-  '夏至': '하지', '小暑': '소서', '大暑': '대서', '立秋': '입추',
-  '處暑': '처서', '处暑': '처서', '白露': '백로', '秋分': '추분',
-  '寒露': '한로', '霜降': '상강', '立冬': '입동', '小雪': '소설',
-  '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
+  '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
+  '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
 const App: React.FC = () => {
+  const [hasKey, setHasKey] = useState<boolean>(!!process.env.API_KEY);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [memos, setMemos] = useState<Memo[]>([]);
@@ -82,6 +78,17 @@ const App: React.FC = () => {
   const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
   const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
 
+  // API 키 선택 도구 열기
+  const handleOpenApiKeyDialog = async () => {
+    if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
+      await window.aistudio.openSelectKey();
+      // 키 선택 후 즉시 상태 업데이트 시도
+      setHasKey(true);
+    } else {
+      alert("API 키 선택 기능을 사용할 수 없는 환경입니다. Vercel 설정에서 API_KEY를 확인하세요.");
+    }
+  };
+
   const loadMemos = useCallback(() => {
     const data = getMemosForDate(selectedDate);
     setMemos(data);
@@ -92,13 +99,14 @@ const App: React.FC = () => {
   }, [loadMemos]);
 
   useEffect(() => {
-    if (profile) {
+    // API 키가 있고 프로필이 설정된 경우에만 운세 가져오기
+    if (hasKey && profile) {
       setLoadingFortune(true);
       getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'))
         .then(setFortune)
         .finally(() => setLoadingFortune(false));
     }
-  }, [selectedDate, profile]);
+  }, [selectedDate, profile, hasKey]);
 
   useEffect(() => {
     if (!profile || !profile.notifications_enabled) return;
@@ -113,33 +121,9 @@ const App: React.FC = () => {
         const todoCount = todayMemos.filter(m => !m.completed).length;
         new Notification('Daily Harmony', {
           body: `${profile.name}님, 좋은 아침입니다! 오늘 ${todoCount}개의 할 일이 있습니다.`,
-          icon: '/favicon.ico'
         });
         lastNotificationDate.current = todayStr;
         localStorage.setItem('last_notif_date', todayStr);
-      }
-
-      for (let i = 0; i <= 15; i++) {
-        const checkDay = addDays(now, i);
-        const targetMemos = getMemosForDate(checkDay);
-        targetMemos.forEach(memo => {
-          if (!memo.reminder_time || memo.completed) return;
-
-          const memoDateTime = parse(`${format(checkDay, 'yyyy-MM-dd')} ${memo.reminder_time}`, 'yyyy-MM-dd HH:mm', new Date());
-          const fireTime = subMinutes(memoDateTime, parseInt(memo.reminder_offset || '0'));
-          
-          if (format(fireTime, 'yyyy-MM-dd HH:mm') === format(now, 'yyyy-MM-dd HH:mm')) {
-            const notificationId = `${memo.id}-${format(fireTime, 'yyyyMMddHHmm')}`;
-            if (!notifiedMemos.current.has(notificationId)) {
-              new Notification('일정 리마인더', {
-                body: `[${memo.type}] ${memo.content}`,
-                icon: '/favicon.ico'
-              });
-              notifiedMemos.current.add(notificationId);
-              localStorage.setItem('notified_memos', JSON.stringify(Array.from(notifiedMemos.current)));
-            }
-          }
-        });
       }
     };
 
@@ -152,10 +136,8 @@ const App: React.FC = () => {
     const m = date.getMonth() + 1;
     const d = date.getDate();
     const mmdd = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    
     const holiday = SOLAR_HOLIDAYS[mmdd] || null;
     const rawJieQi = lunar.getJieQi() || null;
-    // 한자 절기명을 한글로 변환
     const jieQi = rawJieQi ? (JIE_QI_MAP[rawJieQi] || rawJieQi) : null;
 
     let dynamicHoliday = null;
@@ -163,17 +145,8 @@ const App: React.FC = () => {
     const ld = lunar.getDay();
     if (lm === 1 && ld === 1) dynamicHoliday = '설날';
     else if (lm === 1 && ld === 2) dynamicHoliday = '설날 연휴';
-    else if (Lunar.fromDate(addDays(date, 1)).getMonth() === 1 && Lunar.fromDate(addDays(date, 1)).getDay() === 1) dynamicHoliday = '설날 연휴';
     else if (lm === 4 && ld === 8) dynamicHoliday = '부처님오신날';
-    else if (lm === 8 && ld && (ld === 14 || ld === 15 || ld === 16)) dynamicHoliday = ld === 15 ? '추석' : '추석 연휴';
-
-    if (!holiday && !dynamicHoliday && getDay(date) === 1) {
-      const yesterday = addDays(date, -1);
-      const yDetails = getDayDetails(yesterday);
-      if ((yDetails.holiday || yDetails.dynamicHoliday) && getDay(yesterday) === 0) {
-        dynamicHoliday = '대체공휴일';
-      }
-    }
+    else if (lm === 8 && ld === 15) dynamicHoliday = '추석';
 
     return { holiday, dynamicHoliday, jieQi, lunar };
   }, []);
@@ -189,9 +162,6 @@ const App: React.FC = () => {
       reminder_offset: reminderEnabled ? reminderOffset : undefined,
     });
     setNewMemo('');
-    setSelectedRepeat(RepeatType.NONE);
-    setReminderEnabled(false);
-    setReminderOffset(ReminderOffset.AT_TIME);
     loadMemos();
   };
 
@@ -254,7 +224,7 @@ const App: React.FC = () => {
                   </span>
                 )}
                 {jieQi && (
-                  <span className="flex items-center space-x-0.5 text-[9px] text-emerald-600 font-black leading-tight">
+                  <span className="flex items-center space-x-0.5 text-[9px] text-emerald-600 font-black">
                     <Leaf size={8} />
                     <span>{jieQi}</span>
                   </span>
@@ -271,9 +241,6 @@ const App: React.FC = () => {
                    <span className="text-[10px] text-gray-600 truncate font-medium">{m.content}</span>
                  </div>
                ))}
-               {dayMemos.length > 2 && (
-                 <div className="text-[9px] text-indigo-400 font-bold pl-2.5">+{dayMemos.length - 2}</div>
-               )}
             </div>
           </div>
         );
@@ -285,23 +252,39 @@ const App: React.FC = () => {
     return <div className="border-t border-l rounded-2xl overflow-hidden bg-white shadow-xl shadow-gray-200/50">{rows}</div>;
   };
 
+  // API 키가 없는 경우 표시할 화면
+  if (!hasKey) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white rounded-[40px] shadow-2xl p-10 text-center border border-slate-100 animate-in zoom-in duration-300">
+          <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
+            <Sparkles size={40} />
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">AI 운세 서비스 시작</h1>
+          <p className="text-slate-500 mb-10 leading-relaxed font-medium">
+            Daily Harmony의 AI 운세와 스마트 분석 기능을 사용하려면 Gemini API 키 연결이 필요합니다.
+          </p>
+          
+          <button 
+            onClick={handleOpenApiKeyDialog}
+            className="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center space-x-3 active:scale-95"
+          >
+            <Key size={20} />
+            <span>AI 서비스 연결하기</span>
+          </button>
+          
+          <p className="mt-8 text-xs text-slate-400">
+            사용자의 데이터는 안전하게 로컬에 저장됩니다.<br/>
+            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline hover:text-indigo-500">Google API 과금 정책 확인</a>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const biorhythm = profile ? calculateBiorhythm(profile.birth_date, selectedDate) : null;
   const currentDayInfo = getDayDetails(selectedDate);
-
-  const offsetLabels: Record<string, string> = {
-    '0': '정시',
-    '10': '10분 전',
-    '30': '30분 전',
-    '60': '1시간 전',
-    '120': '2시간 전',
-    '360': '6시간 전',
-    '720': '12시간 전',
-    '1440': '1일 전',
-    '2880': '2일 전',
-    '4320': '3일 전',
-    '10080': '1주 전',
-    '20160': '2주 전'
-  };
+  const offsetLabels: Record<string, string> = { '0': '정시', '10': '10분 전', '30': '30분 전', '60': '1시간 전', '120': '2시간 전', '360': '6시간 전', '720': '12시간 전', '1440': '1일 전' };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 animate-in fade-in duration-700">
@@ -322,12 +305,6 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-3">
-          {profile?.notifications_enabled && (
-            <div className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold border border-emerald-100">
-              <Sparkles size={14} className="animate-pulse" />
-              <span>스마트 리마인더 작동 중</span>
-            </div>
-          )}
           <button 
             onClick={() => setShowProfileModal(true)}
             className="flex items-center space-x-2 bg-white border border-gray-100 text-gray-700 px-5 py-2.5 rounded-2xl hover:bg-gray-50 transition-all shadow-sm font-bold"
@@ -357,7 +334,6 @@ const App: React.FC = () => {
               <div className="flex items-center space-x-2 mb-6">
                 <Activity className="text-indigo-600" size={24} />
                 <h3 className="text-xl font-black text-gray-900">바이오리듬</h3>
-                <span className="text-sm font-medium text-gray-400 ml-2">{format(selectedDate, 'M월 d일')} 분석</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
                 <BiorhythmChart birthDate={profile.birth_date} targetDate={selectedDate} />
@@ -394,35 +370,19 @@ const App: React.FC = () => {
                   <span className="text-xs font-bold">음력 {currentDayInfo.lunar.getMonth()}.{currentDayInfo.lunar.getDay()}</span>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 mt-6">
-                {(currentDayInfo.holiday || currentDayInfo.dynamicHoliday) && (
-                  <div className="bg-rose-500 text-white px-4 py-1.5 rounded-xl text-xs font-black shadow-lg">
-                    {currentDayInfo.holiday || currentDayInfo.dynamicHoliday}
-                  </div>
-                )}
-                {currentDayInfo.jieQi && (
-                  <div className="bg-emerald-500 text-white px-4 py-1.5 rounded-xl text-xs font-black shadow-lg flex items-center space-x-1">
-                    <Leaf size={12} />
-                    <span>{currentDayInfo.jieQi}</span>
-                  </div>
-                )}
-              </div>
             </div>
             <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12" size={180} />
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50 relative overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50">
             <div className="flex items-center space-x-2 mb-5">
-              <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-500">
-                <Sparkles size={18} />
-              </div>
+              <Sparkles className="text-indigo-500" size={18} />
               <h3 className="text-lg font-black text-gray-900">오늘의 AI 운세</h3>
             </div>
             {loadingFortune ? (
               <div className="space-y-3 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded-full w-3/4"></div>
                 <div className="h-4 bg-gray-100 rounded-full w-full"></div>
-                <div className="h-4 bg-gray-100 rounded-full w-5/6"></div>
               </div>
             ) : (
               <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">
@@ -451,74 +411,6 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <div className="space-y-4 mb-5">
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">반복 설정</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    [RepeatType.NONE, '안함'],
-                    [RepeatType.WEEKLY, '주'],
-                    [RepeatType.MONTHLY, '월'],
-                    [RepeatType.YEARLY_SOLAR, '년(양)'],
-                    [RepeatType.YEARLY_LUNAR, '년(음)'],
-                  ].map(([type, label]) => (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedRepeat(type as RepeatType)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all
-                        ${selectedRepeat === type 
-                          ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300' 
-                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="flex items-center justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-                  <span>정밀 알람 설정</span>
-                  <button 
-                    onClick={() => setReminderEnabled(!reminderEnabled)}
-                    className={`text-[10px] font-black px-2 py-0.5 rounded-md transition-colors ${reminderEnabled ? 'bg-rose-100 text-rose-600' : 'bg-gray-100 text-gray-400'}`}
-                  >
-                    {reminderEnabled ? '사용 중' : '사용 안함'}
-                  </button>
-                </label>
-                {reminderEnabled && (
-                  <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
-                    <div className="relative">
-                      <input 
-                        type="time" 
-                        value={reminderTime}
-                        onChange={(e) => setReminderTime(e.target.value)}
-                        className="w-full bg-indigo-50/50 border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-2 pl-9 text-xs font-bold text-indigo-700 shadow-inner"
-                      />
-                      <Clock className="absolute left-3 top-2 text-indigo-400" size={14} />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-bold text-gray-400 mb-1 ml-1">언제 미리 알려드릴까요?</label>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {Object.entries(offsetLabels).map(([val, label]) => (
-                          <button
-                            key={val}
-                            onClick={() => setReminderOffset(val as ReminderOffset)}
-                            className={`px-1 py-1.5 rounded-lg text-[8px] font-bold transition-all border
-                              ${reminderOffset === val 
-                                ? 'bg-rose-500 text-white border-rose-600 shadow-sm' 
-                                : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
             <div className="relative group">
               <input 
                 type="text" 
@@ -530,55 +422,28 @@ const App: React.FC = () => {
               />
               <button 
                 onClick={handleAddMemo}
-                className="absolute right-2.5 top-2.5 p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-100"
+                className="absolute right-2.5 top-2.5 p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg"
               >
                 <Plus size={20} />
               </button>
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50 min-h-[350px]">
+          <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-black text-gray-900">기록 목록</h3>
-              <div className="bg-indigo-50 text-indigo-600 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">{memos.length} ITEMS</div>
             </div>
             <div className="space-y-3">
               {memos.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Info className="text-gray-300" size={24} />
-                  </div>
-                  <p className="text-sm font-bold text-gray-400">아직 기록이 없습니다.</p>
-                </div>
+                <p className="text-center py-10 text-sm font-bold text-gray-300">기록이 없습니다.</p>
               ) : (
                 memos.map((memo) => (
-                  <div key={memo.id} className="group flex items-center justify-between bg-white border border-gray-50 p-4 rounded-2xl hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-50/50 transition-all">
+                  <div key={memo.id} className="group flex items-center justify-between bg-white border border-gray-50 p-4 rounded-2xl hover:border-indigo-100 transition-all">
                     <div className="flex items-center space-x-4 flex-1 min-w-0">
                       <button onClick={() => handleToggleMemo(memo.id)} className="shrink-0 transition-transform active:scale-90">
-                        {memo.completed ? <CheckCircle2 className="text-emerald-500" size={22} /> : <Circle className="text-gray-200 group-hover:text-indigo-200" size={22} />}
+                        {memo.completed ? <CheckCircle2 className="text-emerald-500" size={22} /> : <Circle className="text-gray-200" size={22} />}
                       </button>
-                      <div className="flex flex-col min-w-0">
-                        <span className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{memo.content}</span>
-                        <div className="flex items-center flex-wrap gap-2 mt-1">
-                          <span className={`text-[9px] font-black uppercase tracking-tighter ${
-                            memo.type === MemoType.IDEA ? 'text-amber-500' : memo.type === MemoType.APPOINTMENT ? 'text-rose-500' : 'text-blue-500'
-                          }`}>{memo.type}</span>
-                          {memo.repeat_type !== RepeatType.NONE && (
-                            <div className="flex items-center space-x-1 text-indigo-400">
-                               <RefreshCcw size={10} />
-                               <span className="text-[8px] font-bold">반복</span>
-                            </div>
-                          )}
-                          {memo.reminder_time && (
-                            <div className="flex items-center space-x-1 text-rose-500">
-                               <Bell size={10} />
-                               <span className="text-[8px] font-bold uppercase tracking-tighter">
-                                 {memo.reminder_time} ({offsetLabels[memo.reminder_offset || '0']})
-                               </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <span className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{memo.content}</span>
                     </div>
                     <button onClick={() => handleDeleteMemo(memo.id)} className="text-gray-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 p-2 transition-all">
                       <Trash2 size={16} />
