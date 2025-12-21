@@ -11,7 +11,7 @@ import {
   ReferenceLine 
 } from 'recharts';
 import { addDays, subDays, format } from 'date-fns';
-import { calculateBiorhythm } from '../services/biorhythmService';
+import { calculateBiorhythm } from '../services/biorhythmService.ts';
 
 interface Props {
   birthDate: string;

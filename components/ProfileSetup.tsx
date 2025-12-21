@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserProfile } from '../types';
+import { UserProfile } from '../types.ts';
 import { X, Calendar, User as UserIcon, Clock, Bell, BellOff } from 'lucide-react';
 
 interface Props {
