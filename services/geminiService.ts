@@ -1,17 +1,15 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// FIX: Removed externalApiKey parameter and using process.env.API_KEY directly as per Gemini API guidelines.
 export async function getDailyFortune(birthDate: string, birthTime: string, targetDate: string) {
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === "") {
-    console.error("API_KEY가 감지되지 않았습니다.");
-    return "API 키가 설정되지 않았습니다.";
+    throw new Error("API_KEY가 설정되지 않았습니다.");
   }
 
   try {
-    // FIX: Using recommended initialization pattern
+    // 매 호출 시마다 새로운 인스턴스를 생성하여 최신 API 키 반영 보장
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `당신은 유능한 명리학자이자 운세 상담가입니다. 
 사용자의 생년월일(${birthDate})과 태어난 시간(${birthTime || '모름'}), 그리고 오늘의 날짜(${targetDate})를 바탕으로 한국어로 친절하고 희망적인 오늘의 운세를 작성해주세요. 
@@ -28,7 +26,6 @@ export async function getDailyFortune(birthDate: string, birthTime: string, targ
       }
     });
 
-    // FIX: Accessing .text property directly as per latest SDK guidelines
     if (response && response.text) {
       return response.text;
     } else {
@@ -36,6 +33,6 @@ export async function getDailyFortune(birthDate: string, birthTime: string, targ
     }
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    return `운세를 가져오는 중 오류가 발생했습니다.`;
+    throw error; // App 컴포넌트에서 에러 처리를 할 수 있도록 그대로 던짐
   }
 }
