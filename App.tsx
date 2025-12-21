@@ -45,8 +45,7 @@ import {
   ShieldCheck,
   AlertCircle,
   Link as LinkIcon,
-  Settings,
-  Key
+  Settings
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
@@ -60,23 +59,8 @@ import ProfileSetup from './components/ProfileSetup.tsx';
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒종': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '취분', '寒露': '한로', '霜강': '상강',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋분': '취분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
-};
-
-const OFFSET_LABELS: Record<ReminderOffset, string> = {
-  [ReminderOffset.AT_TIME]: '정시',
-  [ReminderOffset.MIN_10]: '10분 전',
-  [ReminderOffset.MIN_30]: '30분 전',
-  [ReminderOffset.HOUR_1]: '1시간 전',
-  [ReminderOffset.HOUR_2]: '2시간 전',
-  [ReminderOffset.HOUR_3]: '3시간 전',
-  [ReminderOffset.HOUR_6]: '6시간 전',
-  [ReminderOffset.DAY_1]: '1일 전',
-  [ReminderOffset.DAY_2]: '2일 전',
-  [ReminderOffset.DAY_3]: '3일 전',
-  [ReminderOffset.WEEK_1]: '1주일 전',
-  [ReminderOffset.MONTH_1]: '1달 전',
 };
 
 const App: React.FC = () => {
@@ -86,17 +70,13 @@ const App: React.FC = () => {
   const [newMemo, setNewMemo] = useState('');
   const [selectedType, setSelectedType] = useState<MemoType>(MemoType.TODO);
   
-  // 알림 관련 상태
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState('09:00');
   const [selectedOffsets, setSelectedOffsets] = useState<ReminderOffset[]>([ReminderOffset.AT_TIME]);
   const [showReminderOptions, setShowReminderOptions] = useState(false);
-  
-  // 수정 관련 상태
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
-
-  // 데이터 관리 및 자동 백업 상태
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null);
   const [isFileSystemSupported, setIsFileSystemSupported] = useState(true);
@@ -110,17 +90,15 @@ const App: React.FC = () => {
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  // Load memos whenever selected date changes
-  const loadMemos = useCallback(() => {
-    const data = getMemosForDate(selectedDate);
-    setMemos(data);
-  }, [selectedDate]);
+  const checkApiKeyStatus = useCallback(async () => {
+    if (window.aistudio) {
+      const selected = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(selected);
+      return selected;
+    }
+    return false;
+  }, []);
 
-  useEffect(() => {
-    loadMemos();
-  }, [loadMemos]);
-
-  // Fetch fortune using Gemini API
   const fetchFortune = useCallback(async () => {
     if (profile) {
       setLoadingFortune(true);
@@ -132,22 +110,42 @@ const App: React.FC = () => {
         );
         setFortune(result);
       } catch (err: any) {
-        setFortune("운세를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+        if (err?.message?.includes('Requested entity was not found')) {
+          setHasApiKey(false);
+          setFortune("");
+        } else {
+          setFortune("운세를 불러오지 못했습니다. 키 연결 상태를 확인해주세요.");
+        }
       } finally {
         setLoadingFortune(false);
       }
     }
   }, [selectedDate, profile]);
 
-  // 초기 로드
+  const handleOpenKeySelection = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+      if (profile) fetchFortune();
+    }
+  };
+
   useEffect(() => {
     setIsFileSystemSupported('showSaveFilePicker' in window);
-    if (profile) {
-      fetchFortune();
-    }
-  }, [profile, fetchFortune]);
+    checkApiKeyStatus().then((selected) => {
+      if (selected && profile) fetchFortune();
+    });
+  }, [profile, checkApiKeyStatus, fetchFortune]);
 
-  // Trigger automatic backup if file system is supported and handle exists
+  const loadMemos = useCallback(() => {
+    const data = getMemosForDate(selectedDate);
+    setMemos(data);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    loadMemos();
+  }, [loadMemos]);
+
   const triggerAutoBackup = async (handle: FileSystemFileHandle | null = fileHandle) => {
     if (!handle) return;
     try {
@@ -182,14 +180,12 @@ const App: React.FC = () => {
     await triggerAutoBackup();
   };
 
-  // Toggle memo completion status
   const handleToggleMemo = async (id: string) => {
     toggleMemoLocal(id);
     loadMemos();
     await triggerAutoBackup();
   };
 
-  // Delete memo from local storage
   const handleDeleteMemo = async (id: string) => {
     deleteMemoLocal(id);
     loadMemos();
@@ -212,7 +208,6 @@ const App: React.FC = () => {
     return { holiday, dynamicHoliday, jieQi, lunar };
   }, []);
 
-  // Details for the currently selected date
   const currentDayInfo = getDayDetails(selectedDate);
 
   const renderCells = () => {
@@ -287,7 +282,6 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-3 py-4 md:py-10 animate-in fade-in duration-500">
-      {/* 상단 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 space-y-4 md:space-y-0">
         <div className="flex items-center justify-between w-full md:w-auto">
           <h2 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">
@@ -310,7 +304,6 @@ const App: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
-        {/* 왼쪽: 캘린더 및 바이오리듬 */}
         <div className="lg:col-span-8 space-y-6">
           <div className="bg-white rounded-[32px] p-2 md:p-6 shadow-sm border border-gray-100 overflow-x-hidden">
              <div className="grid grid-cols-7 mb-2 border-b pb-2">
@@ -329,9 +322,7 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* 오른쪽: 정보 카드 */}
         <div className="lg:col-span-4 space-y-6">
-          {/* 날짜 카드 */}
           <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-[32px] p-6 shadow-lg relative overflow-hidden">
             <div className="relative z-10">
               <p className="text-indigo-200 text-[10px] font-bold tracking-widest mb-1">{format(selectedDate, 'yyyy')}</p>
@@ -344,7 +335,6 @@ const App: React.FC = () => {
             <Moon className="absolute -right-6 -bottom-6 text-white opacity-10 rotate-12" size={140} />
           </div>
 
-          {/* AI 운세 카드 */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-black flex items-center gap-2"><Sparkles size={20} className="text-amber-400" /> 오늘의 AI 운세</h3>
@@ -352,6 +342,13 @@ const App: React.FC = () => {
 
             {!profile ? (
               <p className="text-gray-400 text-sm text-center py-4 font-medium">프로필을 설정하면 운세를 볼 수 있어요.</p>
+            ) : !hasApiKey ? (
+              <div className="text-center py-4 space-y-4">
+                 <p className="text-gray-400 text-xs leading-relaxed">AI 운세를 이용하려면 서비스 연결이 필요합니다.</p>
+                 <button onClick={handleOpenKeySelection} className="w-full bg-indigo-600 text-white py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2">
+                   <LinkIcon size={16} /> AI 서비스 연결하기
+                 </button>
+              </div>
             ) : loadingFortune ? (
               <div className="space-y-2 py-2 animate-pulse">
                 <div className="h-3 bg-gray-100 rounded-full w-3/4"></div>
@@ -363,7 +360,6 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* 기록 추가 카드 */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100">
             <h3 className="text-sm font-black mb-4 flex items-center gap-2"><Plus size={18} className="text-indigo-600" /> 기록 추가</h3>
             <div className="flex gap-2 mb-4">
@@ -379,7 +375,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 목록 카드 */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100">
             <h3 className="text-lg font-black mb-4">기록 목록</h3>
             <div className="space-y-3">
@@ -403,7 +398,7 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {showProfileModal && <ProfileSetup onSave={(newProfile) => { setProfile(newProfile); localStorage.setItem('user_profile', JSON.stringify(newProfile)); setShowProfileModal(false); fetchFortune(); }} onClose={() => setShowProfileModal(false)} currentProfile={profile} />}
+      {showProfileModal && <ProfileSetup onSave={(newProfile) => { setProfile(newProfile); localStorage.setItem('user_profile', JSON.stringify(newProfile)); setShowProfileModal(false); if (hasApiKey) fetchFortune(); }} onClose={() => setShowProfileModal(false)} currentProfile={profile} />}
     </div>
   );
 };
