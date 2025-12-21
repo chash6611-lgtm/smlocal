@@ -11,9 +11,7 @@ import {
   isSameMonth, 
   isSameDay, 
   addDays,
-  getDay,
-  subMinutes,
-  parse
+  getDay
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { 
@@ -30,13 +28,10 @@ import {
   User, 
   Activity,
   Sparkles,
-  Info,
   Moon,
-  RefreshCcw,
-  Bell,
-  Clock,
   Leaf,
-  Key
+  Key,
+  Link as LinkIcon
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
@@ -47,25 +42,26 @@ import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// 24절기 매핑
 const JIE_QI_MAP: Record<string, string> = {
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
 const App: React.FC = () => {
-  const [hasKey, setHasKey] = useState<boolean>(!!process.env.API_KEY);
+  // API 키 상태 관리 (환경 변수 또는 로컬 스토리지)
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY') || '';
+  });
+  const [tempKey, setTempKey] = useState('');
+  
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [memos, setMemos] = useState<Memo[]>([]);
   const [newMemo, setNewMemo] = useState('');
   const [selectedType, setSelectedType] = useState<MemoType>(MemoType.TODO);
   const [selectedRepeat, setSelectedRepeat] = useState<RepeatType>(RepeatType.NONE);
-  const [reminderEnabled, setReminderEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState('09:00');
-  const [reminderOffset, setReminderOffset] = useState<ReminderOffset>(ReminderOffset.AT_TIME);
   
   const [profile, setProfile] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('user_profile');
@@ -74,20 +70,6 @@ const App: React.FC = () => {
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  
-  const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
-  const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
-
-  // API 키 선택 도구 열기
-  const handleOpenApiKeyDialog = async () => {
-    if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-      await window.aistudio.openSelectKey();
-      // 키 선택 후 즉시 상태 업데이트 시도
-      setHasKey(true);
-    } else {
-      alert("API 키 선택 기능을 사용할 수 없는 환경입니다. Vercel 설정에서 API_KEY를 확인하세요.");
-    }
-  };
 
   const loadMemos = useCallback(() => {
     const data = getMemosForDate(selectedDate);
@@ -98,38 +80,37 @@ const App: React.FC = () => {
     loadMemos();
   }, [loadMemos]);
 
-  useEffect(() => {
-    // API 키가 있고 프로필이 설정된 경우에만 운세 가져오기
-    if (hasKey && profile) {
+  // API 키가 설정되면 운세 가져오기
+  const fetchFortune = useCallback(async () => {
+    if (apiKey && profile) {
       setLoadingFortune(true);
-      getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'))
-        .then(setFortune)
-        .finally(() => setLoadingFortune(false));
+      try {
+        const result = await getDailyFortune(
+          profile.birth_date, 
+          profile.birth_time, 
+          format(selectedDate, 'yyyy-MM-dd'),
+          apiKey
+        );
+        setFortune(result);
+      } catch (err) {
+        setFortune("운세를 불러오지 못했습니다.");
+      } finally {
+        setLoadingFortune(false);
+      }
     }
-  }, [selectedDate, profile, hasKey]);
+  }, [selectedDate, profile, apiKey]);
 
   useEffect(() => {
-    if (!profile || !profile.notifications_enabled) return;
+    fetchFortune();
+  }, [fetchFortune]);
 
-    const checkNotifications = () => {
-      const now = new Date();
-      const currentTimeStr = format(now, 'HH:mm');
-      const todayStr = format(now, 'yyyy-MM-dd');
-
-      if (currentTimeStr === profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
-        const todayMemos = getMemosForDate(now);
-        const todoCount = todayMemos.filter(m => !m.completed).length;
-        new Notification('Daily Harmony', {
-          body: `${profile.name}님, 좋은 아침입니다! 오늘 ${todoCount}개의 할 일이 있습니다.`,
-        });
-        lastNotificationDate.current = todayStr;
-        localStorage.setItem('last_notif_date', todayStr);
-      }
-    };
-
-    const intervalId = setInterval(checkNotifications, 30000);
-    return () => clearInterval(intervalId);
-  }, [profile]);
+  const handleSaveApiKey = () => {
+    if (tempKey.trim()) {
+      localStorage.setItem('GEMINI_API_KEY', tempKey.trim());
+      setApiKey(tempKey.trim());
+      setTempKey('');
+    }
+  };
 
   const getDayDetails = useCallback((date: Date) => {
     const lunar = Lunar.fromDate(date);
@@ -158,8 +139,6 @@ const App: React.FC = () => {
       type: selectedType,
       content: newMemo,
       repeat_type: selectedRepeat,
-      reminder_time: reminderEnabled ? reminderTime : undefined,
-      reminder_offset: reminderEnabled ? reminderOffset : undefined,
     });
     setNewMemo('');
     loadMemos();
@@ -252,39 +231,8 @@ const App: React.FC = () => {
     return <div className="border-t border-l rounded-2xl overflow-hidden bg-white shadow-xl shadow-gray-200/50">{rows}</div>;
   };
 
-  // API 키가 없는 경우 표시할 화면
-  if (!hasKey) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-[40px] shadow-2xl p-10 text-center border border-slate-100 animate-in zoom-in duration-300">
-          <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
-            <Sparkles size={40} />
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">AI 운세 서비스 시작</h1>
-          <p className="text-slate-500 mb-10 leading-relaxed font-medium">
-            Daily Harmony의 AI 운세와 스마트 분석 기능을 사용하려면 Gemini API 키 연결이 필요합니다.
-          </p>
-          
-          <button 
-            onClick={handleOpenApiKeyDialog}
-            className="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center space-x-3 active:scale-95"
-          >
-            <Key size={20} />
-            <span>AI 서비스 연결하기</span>
-          </button>
-          
-          <p className="mt-8 text-xs text-slate-400">
-            사용자의 데이터는 안전하게 로컬에 저장됩니다.<br/>
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline hover:text-indigo-500">Google API 과금 정책 확인</a>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const biorhythm = profile ? calculateBiorhythm(profile.birth_date, selectedDate) : null;
   const currentDayInfo = getDayDetails(selectedDate);
-  const offsetLabels: Record<string, string> = { '0': '정시', '10': '10분 전', '30': '30분 전', '60': '1시간 전', '120': '2시간 전', '360': '6시간 전', '720': '12시간 전', '1440': '1일 전' };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 animate-in fade-in duration-700">
@@ -374,19 +322,78 @@ const App: React.FC = () => {
             <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12" size={180} />
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50">
-            <div className="flex items-center space-x-2 mb-5">
-              <Sparkles className="text-indigo-500" size={18} />
-              <h3 className="text-lg font-black text-gray-900">오늘의 AI 운세</h3>
+          {/* 오늘의 AI 운세 카드 */}
+          <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 p-7 border border-gray-50 overflow-hidden relative">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="text-indigo-500" size={18} />
+                <h3 className="text-lg font-black text-gray-900">오늘의 AI 운세</h3>
+              </div>
+              {apiKey && (
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('GEMINI_API_KEY');
+                    setApiKey('');
+                  }}
+                  className="text-[10px] font-bold text-gray-300 hover:text-gray-500 transition-colors"
+                >
+                  연결 해제
+                </button>
+              )}
             </div>
-            {loadingFortune ? (
-              <div className="space-y-3 animate-pulse">
+
+            {!apiKey ? (
+              <div className="space-y-4 animate-in fade-in duration-500">
+                <p className="text-xs text-gray-500 font-medium leading-relaxed">
+                  AI 운세 서비스를 이용하시려면 Gemini API 키를 연결해 주세요. 키는 브라우저에만 저장됩니다.
+                </p>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input 
+                      type="password" 
+                      value={tempKey}
+                      onChange={(e) => setTempKey(e.target.value)}
+                      placeholder="API 키를 입력하세요"
+                      className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-3 pl-10 pr-4 text-xs font-medium"
+                    />
+                    <Key size={14} className="absolute left-3.5 top-3.5 text-gray-300" />
+                  </div>
+                  <button 
+                    onClick={handleSaveApiKey}
+                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center space-x-2 text-xs"
+                  >
+                    <LinkIcon size={14} />
+                    <span>AI 서비스 연결하기</span>
+                  </button>
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block text-center text-[10px] text-indigo-400 hover:underline font-bold"
+                  >
+                    API 키 무료로 발급받기
+                  </a>
+                </div>
+              </div>
+            ) : !profile ? (
+              <div className="py-4 text-center">
+                 <p className="text-gray-400 text-sm font-medium">프로필을 먼저 설정해주세요.</p>
+                 <button 
+                  onClick={() => setShowProfileModal(true)}
+                  className="mt-3 text-indigo-600 text-xs font-bold hover:underline"
+                 >
+                   프로필 설정하러 가기
+                 </button>
+              </div>
+            ) : loadingFortune ? (
+              <div className="space-y-3 animate-pulse py-2">
                 <div className="h-4 bg-gray-100 rounded-full w-3/4"></div>
                 <div className="h-4 bg-gray-100 rounded-full w-full"></div>
+                <div className="h-4 bg-gray-100 rounded-full w-2/3"></div>
               </div>
             ) : (
               <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                {profile ? fortune : "프로필을 설정하시면 명리학 기반 AI 분석 운세를 제공해드립니다."}
+                {fortune}
               </div>
             )}
           </div>

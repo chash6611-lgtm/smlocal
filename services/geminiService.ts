@@ -1,13 +1,13 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-export async function getDailyFortune(birthDate: string, birthTime: string, targetDate: string) {
-  // 가이드라인에 따라 process.env.API_KEY를 직접 사용합니다.
-  const apiKey = process.env.API_KEY;
+export async function getDailyFortune(birthDate: string, birthTime: string, targetDate: string, externalApiKey?: string) {
+  // 우선적으로 전달받은 키를 사용하고, 없으면 환경 변수를 사용합니다.
+  const apiKey = externalApiKey || process.env.API_KEY;
   
   if (!apiKey || apiKey === "") {
     console.error("API_KEY가 감지되지 않았습니다.");
-    return "API 키가 설정되지 않았습니다. Vercel 설정에서 API_KEY가 올바르게 등록되었는지, 그리고 다시 배포(Redeploy) 하였는지 확인해주세요.";
+    return "API 키가 설정되지 않았습니다.";
   }
 
   try {
@@ -30,13 +30,13 @@ export async function getDailyFortune(birthDate: string, birthTime: string, targ
     if (response && response.text) {
       return response.text;
     } else {
-      return "AI가 응답을 생성했지만 텍스트를 찾을 수 없습니다.";
+      return "AI가 응답을 생성했지만 내용을 읽을 수 없습니다.";
     }
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     if (error.message?.includes("API key not valid")) {
-      return "등록된 API 키가 유효하지 않습니다. Google AI Studio에서 키를 다시 확인해주세요.";
+      return "등록된 API 키가 유효하지 않습니다. 다시 확인해주세요.";
     }
-    return `운세를 가져오는 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`;
+    return `운세를 가져오는 중 오류가 발생했습니다: ${error.message || "연결 오류"}`;
   }
 }
