@@ -9,6 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@100..900&display=swap" rel="stylesheet">
+    <script>
+      // 브라우저에서 process.env 참조 에러 방지
+      window.process = { env: { API_KEY: "" } };
+    </script>
     <style>
         body {
             font-family: 'Pretendard', sans-serif;
@@ -38,6 +42,8 @@
 </head>
 <body>
     <div id="root"></div>
+    <!-- 앱의 진입점(Entry Point)을 명시합니다 -->
+    <script type="module" src="./index.tsx"></script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>

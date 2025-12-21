@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { Memo, RepeatType } from '../types';
+import { Memo, RepeatType } from '../types.ts';
 import { parseISO, format, getDay, getDate, getMonth, isSameDay } from 'date-fns';
 import { Lunar } from 'lunar-javascript';
 

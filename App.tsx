@@ -41,13 +41,13 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { Solar, Lunar } from 'lunar-javascript';
-import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types';
-import { SOLAR_HOLIDAYS } from './constants';
-import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal, getAllMemosLocal } from './services/supabaseClient';
-import { calculateBiorhythm } from './services/biorhythmService';
-import { getDailyFortune } from './services/geminiService';
-import BiorhythmChart from './components/BiorhythmChart';
-import ProfileSetup from './components/ProfileSetup';
+import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
+import { SOLAR_HOLIDAYS } from './constants.tsx';
+import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal, getAllMemosLocal } from './services/supabaseClient.ts';
+import { calculateBiorhythm } from './services/biorhythmService.ts';
+import { getDailyFortune } from './services/geminiService.ts';
+import BiorhythmChart from './components/BiorhythmChart.tsx';
+import ProfileSetup from './components/ProfileSetup.tsx';
 
 // 24절기 한자 -> 한글 매핑 테이블
 const JIE_QI_MAP: Record<string, string> = {
