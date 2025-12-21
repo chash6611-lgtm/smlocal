@@ -63,10 +63,16 @@ export const saveMemoLocal = (memo: Partial<Memo>) => {
     created_at: new Date().toISOString(),
     repeat_type: memo.repeat_type || RepeatType.NONE,
     reminder_time: memo.reminder_time,
-    reminder_offsets: memo.reminder_offsets, // 다중 오프셋 저장
+    reminder_offsets: memo.reminder_offsets,
   };
   memos.push(newMemo);
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(memos));
+};
+
+export const updateMemoLocal = (id: string, updates: Partial<Memo>) => {
+  const memos = getAllMemosLocal();
+  const updated = memos.map(m => m.id === id ? { ...m, ...updates } : m);
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
 };
 
 export const deleteMemoLocal = (id: string) => {

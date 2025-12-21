@@ -1,5 +1,5 @@
 {
-  "name": "smlocal",
+  "name": "smlocal(자동저장 구현)",
   "description": "A sophisticated daily memo application with Lunar calendar integration, Korean public holiday tracking, personalized AI-powered fortunes using Gemini, and biorhythm visualization.",
   "requestFramePermissions": []
 }

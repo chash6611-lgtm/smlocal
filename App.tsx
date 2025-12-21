@@ -36,21 +36,29 @@ import {
   Bell,
   Clock,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Edit2,
+  Check,
+  X,
+  Download,
+  Upload,
+  Database,
+  FileCode,
+  ShieldCheck
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
 import { SOLAR_HOLIDAYS } from './constants.tsx';
-import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal, getAllMemosLocal } from './services/supabaseClient.ts';
+import { getMemosForDate, saveMemoLocal, deleteMemoLocal, toggleMemoLocal, getAllMemosLocal, updateMemoLocal } from './services/supabaseClient.ts';
 import { calculateBiorhythm } from './services/biorhythmService.ts';
 import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
 const JIE_QI_MAP: Record<string, string> = {
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
-  '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜강': '상강',
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
+  '立夏': '입하', '小滿': '소만', '芒종': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '취분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
@@ -70,10 +78,7 @@ const OFFSET_LABELS: Record<ReminderOffset, string> = {
 };
 
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY') || '';
-  });
-  const [tempKey, setTempKey] = useState('');
+  // FIX: Removed local apiKey management states as API key is handled via environment variables
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -87,6 +92,19 @@ const App: React.FC = () => {
   const [selectedOffsets, setSelectedOffsets] = useState<ReminderOffset[]>([ReminderOffset.AT_TIME]);
   const [showReminderOptions, setShowReminderOptions] = useState(false);
   
+  // 수정 관련 상태
+  const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [editReminderEnabled, setEditReminderEnabled] = useState(false);
+  const [editReminderTime, setEditReminderTime] = useState('09:00');
+  const [editSelectedOffsets, setEditSelectedOffsets] = useState<ReminderOffset[]>([]);
+  const [showEditOptions, setShowEditOptions] = useState(false);
+
+  // 데이터 관리 및 자동 백업 상태
+  const [showDataMenu, setShowDataMenu] = useState(false);
+  const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [profile, setProfile] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('user_profile');
     return saved ? JSON.parse(saved) : null;
@@ -96,7 +114,6 @@ const App: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
-  // 이미 알림이 울린 메모 ID와 오프셋 조합을 추적하여 중복 알림 방지
   const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
 
   const loadMemos = useCallback(() => {
@@ -108,14 +125,102 @@ const App: React.FC = () => {
     loadMemos();
   }, [loadMemos]);
 
-  // 알림 및 메모 개별 알림 체크 로직
+  // 파일 시스템에 데이터 쓰기 (자동 백업 핵심 로직)
+  const triggerAutoBackup = async (handle: FileSystemFileHandle | null = fileHandle) => {
+    if (!handle) return;
+    
+    try {
+      const data = {
+        memos: localStorage.getItem('daily_harmony_memos_v2'),
+        profile: localStorage.getItem('user_profile'),
+        // FIX: Removed apiKey from backup data to adhere to security requirements
+        version: '1.0',
+        exportedAt: new Date().toISOString()
+      };
+      
+      const writable = await handle.createWritable();
+      await writable.write(JSON.stringify(data, null, 2));
+      await writable.close();
+      console.log('실시간 자동 백업 완료');
+    } catch (err) {
+      console.error('자동 백업 실패:', err);
+      setFileHandle(null); // 권한 문제나 파일 이슈 시 연결 해제
+    }
+  };
+
+  // 실시간 백업 파일 연결 (최초 권한 획득)
+  const handleConnectBackupFile = async () => {
+    try {
+      // FIX: Cast window to any to access showSaveFilePicker which might not be in the default TypeScript Window definition
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: `daily-harmony-autobackup.json`,
+        types: [{
+          description: 'JSON 파일',
+          accept: { 'application/json': ['.json'] },
+        }],
+      });
+      setFileHandle(handle);
+      await triggerAutoBackup(handle);
+      alert('실시간 파일 백업이 연결되었습니다. 이제 기록할 때마다 이 파일에 자동 저장됩니다.');
+      setShowDataMenu(false);
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        alert('파일 연결에 실패했습니다.');
+      }
+    }
+  };
+
+  // 수동 백업 데이터 내보내기
+  const handleExportData = () => {
+    const data = {
+      memos: localStorage.getItem('daily_harmony_memos_v2'),
+      profile: localStorage.getItem('user_profile'),
+      // FIX: Removed apiKey from exported data
+      version: '1.0',
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily-harmony-backup-${format(new Date(), 'yyyy-MM-dd')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowDataMenu(false);
+  };
+
+  // 백업 데이터 불러오기
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (confirm('현재 저장된 데이터가 백업 파일의 내용으로 대체됩니다. 계속하시겠습니까?')) {
+          if (data.memos) localStorage.setItem('daily_harmony_memos_v2', data.memos);
+          if (data.profile) localStorage.setItem('user_profile', data.profile);
+          // FIX: No longer handling apiKey import/export
+          alert('데이터 복구가 완료되었습니다. 페이지를 새로고침합니다.');
+          window.location.reload();
+        }
+      } catch (err) {
+        alert('유효하지 않은 백업 파일입니다.');
+      }
+    };
+    reader.readAsText(file);
+    setShowDataMenu(false);
+  };
+
   useEffect(() => {
     const checkNotifications = () => {
       const now = new Date();
       const currentTimeStr = format(now, 'HH:mm');
       const todayStr = format(now, 'yyyy-MM-dd');
 
-      // 1. 프로필 데일리 리마인더 체크
       if (profile?.notifications_enabled && currentTimeStr === profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
         const todayMemos = getMemosForDate(now);
         const todoCount = todayMemos.filter(m => !m.completed).length;
@@ -130,7 +235,6 @@ const App: React.FC = () => {
         }
       }
 
-      // 2. 개별 메모 알림 체크
       if (Notification.permission === 'granted') {
         const allMemos = getAllMemosLocal();
         allMemos.forEach(memo => {
@@ -154,7 +258,6 @@ const App: React.FC = () => {
                 icon: '/favicon.ico'
               });
               notifiedMemos.current.add(notificationKey);
-              // 성능을 위해 최근 100개만 유지하거나 주기적으로 청소할 수 있음
               localStorage.setItem('notified_memos', JSON.stringify(Array.from(notifiedMemos.current).slice(-100)));
             }
           });
@@ -162,19 +265,19 @@ const App: React.FC = () => {
       }
     };
 
-    const intervalId = setInterval(checkNotifications, 10000); // 10초마다 체크
+    const intervalId = setInterval(checkNotifications, 10000);
     return () => clearInterval(intervalId);
   }, [profile]);
 
   const fetchFortune = useCallback(async () => {
-    if (apiKey && profile) {
+    // FIX: Removed local apiKey check as service now handles it via process.env.API_KEY
+    if (profile) {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(
           profile.birth_date, 
           profile.birth_time, 
-          format(selectedDate, 'yyyy-MM-dd'),
-          apiKey
+          format(selectedDate, 'yyyy-MM-dd')
         );
         setFortune(result);
       } catch (err) {
@@ -183,19 +286,11 @@ const App: React.FC = () => {
         setLoadingFortune(false);
       }
     }
-  }, [selectedDate, profile, apiKey]);
+  }, [selectedDate, profile]);
 
   useEffect(() => {
     fetchFortune();
   }, [fetchFortune]);
-
-  const handleSaveApiKey = () => {
-    if (tempKey.trim()) {
-      localStorage.setItem('GEMINI_API_KEY', tempKey.trim());
-      setApiKey(tempKey.trim());
-      setTempKey('');
-    }
-  };
 
   const toggleOffset = (offset: ReminderOffset) => {
     setSelectedOffsets(prev => 
@@ -205,7 +300,15 @@ const App: React.FC = () => {
     );
   };
 
-  const handleAddMemo = () => {
+  const toggleEditOffset = (offset: ReminderOffset) => {
+    setEditSelectedOffsets(prev => 
+      prev.includes(offset) 
+        ? prev.filter(o => o !== offset) 
+        : [...prev, offset]
+    );
+  };
+
+  const handleAddMemo = async () => {
     if (!newMemo.trim()) return;
     saveMemoLocal({
       date: format(selectedDate, 'yyyy-MM-dd'),
@@ -219,16 +322,44 @@ const App: React.FC = () => {
     setReminderEnabled(false);
     setShowReminderOptions(false);
     loadMemos();
+    await triggerAutoBackup(); // 추가 후 자동 백업
   };
 
-  const handleToggleMemo = (id: string) => {
+  const handleStartEdit = (memo: Memo) => {
+    setEditingMemoId(memo.id);
+    setEditContent(memo.content);
+    setEditReminderEnabled(!!memo.reminder_time);
+    setEditReminderTime(memo.reminder_time || '09:00');
+    setEditSelectedOffsets(memo.reminder_offsets || [ReminderOffset.AT_TIME]);
+    setShowEditOptions(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMemoId) return;
+    updateMemoLocal(editingMemoId, {
+      content: editContent,
+      reminder_time: editReminderEnabled ? editReminderTime : undefined,
+      reminder_offsets: editReminderEnabled ? editSelectedOffsets : undefined,
+    });
+    setEditingMemoId(null);
+    loadMemos();
+    await triggerAutoBackup(); // 수정 후 자동 백업
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMemoId(null);
+  };
+
+  const handleToggleMemo = async (id: string) => {
     toggleMemoLocal(id);
     loadMemos();
+    await triggerAutoBackup(); // 토글 후 자동 백업
   };
 
-  const handleDeleteMemo = (id: string) => {
+  const handleDeleteMemo = async (id: string) => {
     deleteMemoLocal(id);
     loadMemos();
+    await triggerAutoBackup(); // 삭제 후 자동 백업
   };
 
   const getDayDetails = useCallback((date: Date) => {
@@ -350,6 +481,54 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-3">
+          <div className="relative">
+            <button 
+              onClick={() => setShowDataMenu(!showDataMenu)}
+              className={`p-2.5 bg-white border border-gray-100 rounded-2xl transition-all shadow-sm active:scale-95 flex items-center space-x-1 ${fileHandle ? 'text-emerald-500 border-emerald-100' : 'text-gray-400 hover:text-indigo-600'}`}
+              title="데이터 관리"
+            >
+              <Database size={20} />
+              {fileHandle && <ShieldCheck size={12} className="animate-pulse" />}
+            </button>
+            {showDataMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-50 py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="px-4 py-2 border-b border-gray-50 mb-1">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">파일 시스템 백업</span>
+                </div>
+                <button 
+                  onClick={handleConnectBackupFile}
+                  className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                >
+                  <FileCode size={16} />
+                  <span className="text-left leading-tight">실시간 파일 백업 연결<br/><span className="text-[10px] font-medium text-gray-400">폴더 지정 후 자동 저장</span></span>
+                </button>
+                <div className="px-4 py-2 border-b border-gray-50 mt-1 mb-1">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">일회성 관리</span>
+                </div>
+                <button 
+                  onClick={handleExportData}
+                  className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                >
+                  <Download size={16} />
+                  <span>데이터 직접 내보내기</span>
+                </button>
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                >
+                  <Upload size={16} />
+                  <span>데이터 불러오기</span>
+                </button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleImportData} 
+                  accept=".json" 
+                  className="hidden" 
+                />
+              </div>
+            )}
+          </div>
           <button 
             onClick={() => setShowProfileModal(true)}
             className="flex items-center space-x-2 bg-white border border-gray-100 text-gray-700 px-5 py-2.5 rounded-2xl hover:bg-gray-50 transition-all shadow-sm font-bold"
@@ -425,45 +604,10 @@ const App: React.FC = () => {
                 <Sparkles className="text-indigo-500" size={18} />
                 <h3 className="text-lg font-black text-gray-900">오늘의 AI 운세</h3>
               </div>
-              {apiKey && (
-                <button 
-                  onClick={() => {
-                    localStorage.removeItem('GEMINI_API_KEY');
-                    setApiKey('');
-                  }}
-                  className="text-[10px] font-bold text-gray-300 hover:text-gray-500 transition-colors"
-                >
-                  연결 해제
-                </button>
-              )}
             </div>
 
-            {!apiKey ? (
-              <div className="space-y-4 animate-in fade-in duration-500">
-                <p className="text-xs text-gray-500 font-medium leading-relaxed">
-                  AI 운세 서비스를 이용하시려면 Gemini API 키를 연결해 주세요. 키는 브라우저에만 저장됩니다.
-                </p>
-                <div className="space-y-2">
-                  <div className="relative">
-                    <input 
-                      type="password" 
-                      value={tempKey}
-                      onChange={(e) => setTempKey(e.target.value)}
-                      placeholder="API 키를 입력하세요"
-                      className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-3 pl-10 pr-4 text-xs font-medium"
-                    />
-                    <Key size={14} className="absolute left-3.5 top-3.5 text-gray-300" />
-                  </div>
-                  <button 
-                    onClick={handleSaveApiKey}
-                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center space-x-2 text-xs"
-                  >
-                    <LinkIcon size={14} />
-                    <span>AI 서비스 연결하기</span>
-                  </button>
-                </div>
-              </div>
-            ) : !profile ? (
+            {/* FIX: Removed all API key management UI to comply with guidelines. Service uses process.env.API_KEY */}
+            {!profile ? (
               <div className="py-4 text-center">
                  <p className="text-gray-400 text-sm font-medium">프로필을 먼저 설정해주세요.</p>
                  <button 
@@ -525,7 +669,6 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              {/* 알림 설정 UI */}
               <div className="bg-gray-50/50 rounded-2xl p-4 border border-gray-100">
                 <div className="flex items-center justify-between">
                   <button 
@@ -585,29 +728,106 @@ const App: React.FC = () => {
               ) : (
                 memos.map((memo) => (
                   <div key={memo.id} className="group flex flex-col bg-white border border-gray-50 p-4 rounded-2xl hover:border-indigo-100 transition-all">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4 flex-1 min-w-0">
-                        <button onClick={() => handleToggleMemo(memo.id)} className="shrink-0 transition-transform active:scale-90">
-                          {memo.completed ? <CheckCircle2 className="text-emerald-500" size={22} /> : <Circle className="text-gray-200" size={22} />}
-                        </button>
-                        <span className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{memo.content}</span>
-                      </div>
-                      <button onClick={() => handleDeleteMemo(memo.id)} className="text-gray-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 p-2 transition-all">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    {memo.reminder_time && memo.reminder_offsets && memo.reminder_offsets.length > 0 && (
-                      <div className="mt-2 ml-10 flex items-center space-x-2 overflow-x-auto scrollbar-hide">
-                        <Bell size={10} className="text-indigo-400 shrink-0" />
-                        <span className="text-[10px] font-bold text-indigo-400 whitespace-nowrap">{memo.reminder_time}</span>
-                        <div className="flex gap-1">
-                          {memo.reminder_offsets.map((off, idx) => (
-                            <span key={idx} className="bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded text-[9px] font-black whitespace-nowrap">
-                              {OFFSET_LABELS[off]}
-                            </span>
-                          ))}
+                    {editingMemoId === memo.id ? (
+                      <div className="space-y-4 animate-in fade-in duration-200">
+                        <input 
+                          type="text" 
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full bg-gray-50 border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-3 px-4 text-sm font-medium"
+                        />
+                        
+                        <div className="bg-gray-50/50 rounded-xl p-3 border border-gray-100">
+                          <div className="flex items-center justify-between mb-3">
+                            <button 
+                              onClick={() => setShowEditOptions(!showEditOptions)}
+                              className="flex items-center space-x-2 text-[10px] font-bold text-gray-600"
+                            >
+                              <Bell size={12} className={editReminderEnabled ? "text-indigo-500" : "text-gray-400"} />
+                              <span>알림 수정</span>
+                              {showEditOptions ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            </button>
+                            <button 
+                              onClick={() => setEditReminderEnabled(!editReminderEnabled)}
+                              className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                            >
+                              <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${editReminderEnabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
+                          
+                          {editReminderEnabled && showEditOptions && (
+                            <div className="space-y-3">
+                              <input 
+                                type="time" 
+                                value={editReminderTime}
+                                onChange={(e) => setEditReminderTime(e.target.value)}
+                                className="bg-white border-none rounded-lg py-1 px-2 text-[10px] font-bold"
+                              />
+                              <div className="flex flex-wrap gap-1">
+                                {(Object.keys(OFFSET_LABELS) as ReminderOffset[]).map((offset) => (
+                                  <button
+                                    key={offset}
+                                    onClick={() => toggleEditOffset(offset)}
+                                    className={`px-1.5 py-1 rounded-md text-[9px] font-bold transition-all border
+                                      ${editSelectedOffsets.includes(offset)
+                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                        : 'bg-white text-gray-500 border-gray-100'}`}
+                                  >
+                                    {OFFSET_LABELS[offset]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex space-x-2">
+                          <button 
+                            onClick={handleSaveEdit}
+                            className="flex-1 bg-indigo-600 text-white font-bold py-2 rounded-xl text-xs flex items-center justify-center space-x-1"
+                          >
+                            <Check size={14} /> <span>저장</span>
+                          </button>
+                          <button 
+                            onClick={handleCancelEdit}
+                            className="flex-1 bg-gray-100 text-gray-500 font-bold py-2 rounded-xl text-xs flex items-center justify-center space-x-1"
+                          >
+                            <X size={14} /> <span>취소</span>
+                          </button>
                         </div>
                       </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4 flex-1 min-w-0">
+                            <button onClick={() => handleToggleMemo(memo.id)} className="shrink-0 transition-transform active:scale-90">
+                              {memo.completed ? <CheckCircle2 className="text-emerald-500" size={22} /> : <Circle className="text-gray-200" size={22} />}
+                            </button>
+                            <span className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{memo.content}</span>
+                          </div>
+                          <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onClick={() => handleStartEdit(memo)} className="text-gray-300 hover:text-indigo-500 p-2">
+                              <Edit2 size={16} />
+                            </button>
+                            <button onClick={() => handleDeleteMemo(memo.id)} className="text-gray-300 hover:text-rose-500 p-2">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        {memo.reminder_time && memo.reminder_offsets && memo.reminder_offsets.length > 0 && (
+                          <div className="mt-2 ml-10 flex items-center space-x-2 overflow-x-auto scrollbar-hide">
+                            <Bell size={10} className="text-indigo-400 shrink-0" />
+                            <span className="text-[10px] font-bold text-indigo-400 whitespace-nowrap">{memo.reminder_time}</span>
+                            <div className="flex gap-1">
+                              {memo.reminder_offsets.map((off, idx) => (
+                                <span key={idx} className="bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded text-[9px] font-black whitespace-nowrap">
+                                  {OFFSET_LABELS[off]}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ))
@@ -619,10 +839,11 @@ const App: React.FC = () => {
 
       {showProfileModal && (
         <ProfileSetup 
-          onSave={(newProfile) => {
+          onSave={async (newProfile) => {
             setProfile(newProfile);
             localStorage.setItem('user_profile', JSON.stringify(newProfile));
             setShowProfileModal(false);
+            await triggerAutoBackup(); // 프로필 변경 후 자동 백업
           }} 
           onClose={() => setShowProfileModal(false)}
           currentProfile={profile}
