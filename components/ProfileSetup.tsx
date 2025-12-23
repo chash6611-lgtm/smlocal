@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell, BellOff } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell } from 'lucide-react';
 
 interface Props {
   onSave: (profile: UserProfile) => void;
@@ -18,11 +18,16 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
+      if (!("Notification" in window)) {
+        alert("이 브라우저는 알림 기능을 지원하지 않습니다.");
+        return;
+      }
+
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         setNotifEnabled(true);
       } else {
-        alert('알림 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.');
+        alert('알림 권한이 거부되었습니다. 브라우저 설정에서 이 사이트의 알림 권한을 허용해주세요.');
       }
     } else {
       setNotifEnabled(false);
@@ -43,7 +48,7 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
       <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="relative p-8 max-h-[90vh] overflow-y-auto scrollbar-hide">
           <button 
@@ -130,11 +135,11 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
                       type="time" 
                       value={notifTime}
                       onChange={(e) => setNotifTime(e.target.value)}
-                      className="w-full bg-white border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-2 px-4 text-sm font-bold text-indigo-700 transition-all"
+                      className="w-full bg-white border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-2 px-4 text-sm font-bold text-indigo-700 transition-all shadow-sm"
                     />
                   </div>
-                  <p className="mt-2 text-[10px] text-indigo-400/80 leading-tight">
-                    * 설정하신 시간에 오늘의 운세와 할 일을 요약하여 알려드립니다.
+                  <p className="mt-3 text-[10px] text-indigo-400/80 leading-relaxed font-medium">
+                    * 설정하신 시간에 오늘의 운세와 할 일을 브라우저 알림으로 요약하여 알려드립니다. 알림 수신을 위해 브라우저 창이 열려있어야 합니다.
                   </p>
                 </div>
               )}
