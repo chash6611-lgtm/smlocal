@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell, ExternalLink } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell, Key, ExternalLink, CheckCircle } from 'lucide-react';
 
 interface Props {
   onSave: (profile: UserProfile) => void;
@@ -15,6 +15,28 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const [birthTime, setBirthTime] = useState(currentProfile?.birth_time || '');
   const [notifEnabled, setNotifEnabled] = useState(currentProfile?.notifications_enabled ?? false);
   const [notifTime, setNotifTime] = useState(currentProfile?.daily_reminder_time || '09:00');
+  const [hasKey, setHasKey] = useState(false);
+
+  // 현재 API 키가 선택되어 있는지 확인
+  useEffect(() => {
+    const checkKey = async () => {
+      if ((window as any).aistudio?.hasSelectedApiKey) {
+        const selected = await (window as any).aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    if ((window as any).aistudio?.openSelectKey) {
+      await (window as any).aistudio.openSelectKey();
+      // 선택 후 즉시 true로 가정 (Race condition 방지 가이드라인 준수)
+      setHasKey(true);
+    } else {
+      alert("API 키 선택 기능을 사용할 수 없는 환경입니다.");
+    }
+  };
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
@@ -112,19 +134,60 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
               </div>
             </div>
 
-            <div className="p-4 bg-gray-50/50 rounded-3xl border border-gray-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Bell className={notifEnabled ? "text-indigo-600" : "text-gray-400"} size={18} />
-                  <span className="text-sm font-bold text-gray-700">데일리 리마인더</span>
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50/50 rounded-3xl border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Bell className={notifEnabled ? "text-indigo-600" : "text-gray-400"} size={18} />
+                    <span className="text-sm font-bold text-gray-700">데일리 리마인더</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleNotif}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${notifEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
                 </div>
+              </div>
+
+              {/* AI 서비스 설정 섹션 */}
+              <div className="p-5 bg-indigo-50/50 rounded-3xl border border-indigo-100/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Key className="text-indigo-600" size={18} />
+                    <span className="text-sm font-bold text-indigo-900">AI 운세 서비스</span>
+                  </div>
+                  {hasKey && (
+                    <div className="flex items-center space-x-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      <CheckCircle size={12} />
+                      <span className="text-[10px] font-black uppercase">Active</span>
+                    </div>
+                  )}
+                </div>
+                
+                <p className="text-[11px] text-indigo-700/70 leading-relaxed">
+                  운세 기능을 사용하려면 유료 프로젝트의 API 키 선택이 필요합니다.
+                </p>
+
                 <button
                   type="button"
-                  onClick={handleToggleNotif}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${notifEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                  onClick={handleSelectKey}
+                  className="w-full flex items-center justify-center space-x-2 bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl hover:bg-indigo-50 transition-all text-xs font-black shadow-sm"
                 >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  <Key size={14} />
+                  <span>{hasKey ? 'API 키 변경하기' : 'API 키 선택하기'}</span>
                 </button>
+
+                <a 
+                  href="https://ai.google.dev/gemini-api/docs/billing" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center space-x-1 text-[10px] text-indigo-400 hover:text-indigo-600 transition-colors font-medium"
+                >
+                  <span>결제 및 한도 안내 확인</span>
+                  <ExternalLink size={10} />
+                </a>
               </div>
             </div>
 
