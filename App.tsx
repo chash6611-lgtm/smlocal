@@ -76,8 +76,6 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [newMemo, setNewMemo] = useState('');
   const [selectedType, setSelectedType] = useState<MemoType>(MemoType.TODO);
-  const [reminderEnabled, setReminderEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState('09:00');
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
@@ -92,7 +90,7 @@ const App: React.FC = () => {
       setHasApiKey(has);
       return has;
     }
-    return true; // 로컬 환경 등에서는 기본적으로 true
+    return true;
   }, []);
 
   useEffect(() => {
@@ -177,7 +175,8 @@ const App: React.FC = () => {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
-        if (result.includes("API Key must be set")) {
+        // If the result says key is missing, update state
+        if (result.includes("API Key must be set") || result.includes("Requested entity was not found")) {
           setHasApiKey(false);
           setFortune("");
         } else {
@@ -198,9 +197,12 @@ const App: React.FC = () => {
     const aistudio = (window as any).aistudio;
     if (aistudio?.openSelectKey) {
       await aistudio.openSelectKey();
-      // 선택 후 즉시 상태 업데이트 시도
+      // After opening the dialog, we assume the key is being selected.
       setHasApiKey(true);
-      setTimeout(fetchFortune, 500);
+      // Wait a bit and then refresh the fortune
+      setTimeout(() => {
+        fetchFortune();
+      }, 1000);
     }
   };
 
@@ -350,7 +352,6 @@ const App: React.FC = () => {
                  const { holiday, dynamicHoliday, jieQi, lunar } = getDayDetails(day);
                  const isSelected = isSameDay(day, selectedDate);
                  const isToday = isSameDay(day, new Date());
-                 const dayMemos = getFilteredMemos(allMemos, day);
                  const isCurrentMonth = isSameMonth(day, currentDate);
 
                  return (
@@ -390,13 +391,13 @@ const App: React.FC = () => {
           </div>
 
           <div className="bg-white rounded-[40px] shadow-2xl shadow-gray-200/40 p-8 border border-gray-50">
-            <div className="flex items-center space-x-2 mb-6 text-indigo-500"><Sparkles size={18} /><h3 className="text-lg font-black">오늘의 운세</h3></div>
+            <div className="flex items-center space-x-2 mb-6 text-[#6366f1]"><Sparkles size={20} /><h3 className="text-xl font-black">오늘의 운세</h3></div>
             
             {!hasApiKey ? (
-              <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="space-y-3">
-                  <h4 className="text-sm font-black text-gray-800 flex items-center space-x-2">
-                    <Key size={16} className="text-amber-500" />
+                  <h4 className="text-base font-black text-gray-900 flex items-center space-x-2">
+                    <Key size={18} className="text-[#facc15]" />
                     <span>Google AI Studio API 키</span>
                   </h4>
                   <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
@@ -404,31 +405,34 @@ const App: React.FC = () => {
                   </p>
                 </div>
                 
-                <div className="flex items-center space-x-2">
-                  <div className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-xs text-gray-400 font-medium">
+                <div className="flex items-center space-x-3">
+                  <div 
+                    onClick={handleOpenApiKeySelector}
+                    className="flex-1 bg-[#f8fafc] border border-[#f1f5f9] rounded-[14px] px-5 py-3.5 text-xs text-gray-400 font-medium cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
                     API 키를 선택해주세요
                   </div>
                   <button 
                     onClick={handleOpenApiKeySelector}
-                    className="bg-[#1e293b] text-white px-5 py-3 rounded-xl text-xs font-black hover:bg-black transition-all shadow-md active:scale-95"
+                    className="bg-[#1e293b] text-white px-6 py-3.5 rounded-[14px] text-sm font-black hover:bg-[#0f172a] transition-all shadow-md active:scale-95"
                   >
                     확인
                   </button>
                 </div>
 
-                <div className="flex flex-col space-y-4">
+                <div className="flex flex-col space-y-4 pt-2">
                   <a 
                     href="https://aistudio.google.com/app/apikey" 
                     target="_blank" 
-                    className="text-[10px] text-gray-400 hover:text-indigo-500 transition-colors flex items-center justify-end space-x-1 font-bold"
+                    className="text-[11px] text-gray-400 hover:text-[#6366f1] transition-colors flex items-center justify-end space-x-1.5 font-bold"
                   >
                     <span>무료 API 키 발급받기</span>
-                    <ExternalLink size={10} />
+                    <ExternalLink size={12} />
                   </a>
                   
                   <button 
                     onClick={handleOpenApiKeySelector}
-                    className="w-full bg-[#facc15] text-[#1e293b] font-black py-4 rounded-2xl shadow-lg shadow-yellow-100 hover:bg-[#eab308] transition-all text-sm animate-bounce-short"
+                    className="w-full bg-[#facc15] text-[#1e293b] font-black py-4.5 rounded-[22px] shadow-xl shadow-yellow-100 hover:bg-[#eab308] transition-all text-base animate-bounce-short"
                   >
                     API 키를 확인해주세요
                   </button>
@@ -503,10 +507,14 @@ const App: React.FC = () => {
       <style>{`
         @keyframes bounce-short {
           0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-4px); }
+          50% { transform: translateY(-6px); }
         }
         .animate-bounce-short {
           animation: bounce-short 1.5s ease-in-out infinite;
+        }
+        .py-4\\.5 {
+          padding-top: 1.125rem;
+          padding-bottom: 1.125rem;
         }
       `}</style>
     </div>
