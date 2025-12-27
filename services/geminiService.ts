@@ -2,10 +2,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 export async function getDailyFortune(birthDate: string, birthTime: string, targetDate: string) {
-  // 사용자가 입력한 로컬 키 또는 시스템 주입 키 확인
-  const apiKey = process.env.API_KEY;
+  // 브라우저 전역 process 객체에서 키를 먼저 찾고, 없으면 시스템 환경변수 참조
+  const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
 
-  if (!apiKey) {
+  if (!apiKey || apiKey.trim() === "") {
     return "API 키가 설정되지 않았습니다. 프로필 설정에서 API 키를 입력해주세요.";
   }
 
@@ -33,8 +33,9 @@ export async function getDailyFortune(birthDate: string, birthTime: string, targ
     }
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("invalid key")) {
-      return "입력하신 API 키가 유효하지 않습니다. 다시 확인해주세요.";
+    // 키 관련 에러인 경우 사용자 친화적인 메시지 출력
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("invalid key") || error.message?.includes("403") || error.message?.includes("401")) {
+      return "입력하신 API 키가 유효하지 않거나 권한이 없습니다. 키를 다시 확인해주세요.";
     }
     return `운세를 가져오는 중 오류가 발생했습니다: ${error.message || "연결 상태 확인 필요"}`;
   }

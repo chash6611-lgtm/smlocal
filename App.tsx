@@ -37,7 +37,7 @@ import { fileStorage, getDirectoryHandle } from './services/fileSystemService.ts
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// 사용자가 입력한 API 키를 시스템 변수에 주입하는 유틸리티
+// 사용자가 입력한 API 키를 전역 시스템 변수에 확실하게 주입
 const injectApiKey = (key: string) => {
   if (key) {
     (window as any).process = (window as any).process || { env: {} };
@@ -48,7 +48,7 @@ const injectApiKey = (key: string) => {
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒종': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜강': '상강',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋분': '추분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
@@ -67,7 +67,7 @@ const App: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [userApiKey, setUserApiKey] = useState<string>(localStorage.getItem('user_gemini_api_key') || '');
 
-  // 앱 시작 시 저장된 키가 있다면 주입
+  // 저장된 키가 있다면 즉시 주입
   useEffect(() => {
     if (userApiKey) injectApiKey(userApiKey);
   }, [userApiKey]);
@@ -111,13 +111,15 @@ const App: React.FC = () => {
   };
 
   const fetchFortune = useCallback(async () => {
-    if (profile && (userApiKey || process.env.API_KEY)) {
+    // 전역 process 객체 또는 state의 키가 있는지 다시 한 번 확인
+    const currentKey = (window as any).process?.env?.API_KEY || userApiKey;
+    if (profile && currentKey) {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
         setFortune(result);
       } catch (err: any) { 
-        setFortune("운세를 불러오지 못했습니다. 프로필의 API 키를 다시 확인해주세요."); 
+        setFortune("운세를 분석하는 중 오류가 발생했습니다. 키 유효성을 확인해주세요."); 
       } finally { 
         setLoadingFortune(false); 
       }
@@ -168,7 +170,8 @@ const App: React.FC = () => {
     }
     await saveToStorage(allMemos, newProfile);
     setShowProfileModal(false);
-    fetchFortune();
+    // 키 주입 후 약간의 지연 뒤 운세 다시 가져오기
+    setTimeout(() => fetchFortune(), 100);
   };
 
   const kstJieQiMap = useMemo(() => {
