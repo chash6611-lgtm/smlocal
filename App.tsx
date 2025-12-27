@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   format, 
@@ -57,9 +58,6 @@ import { fileStorage, getDirectoryHandle } from './services/fileSystemService.ts
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// Removed redundant 'aistudio' declaration to fix the TypeScript error: "All declarations of 'aistudio' must have identical modifiers."
-// The environment already provides the correct 'AIStudio' type definition for window.aistudio.
-
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
@@ -86,6 +84,21 @@ const App: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
+  // API 키 확인
+  const checkApiKeyStatus = useCallback(async () => {
+    const aistudio = (window as any).aistudio;
+    if (aistudio?.hasSelectedApiKey) {
+      const has = await aistudio.hasSelectedApiKey();
+      setHasApiKey(has);
+      return has;
+    }
+    return true; // 로컬 환경 등에서는 기본적으로 true
+  }, []);
+
+  useEffect(() => {
+    checkApiKeyStatus();
+  }, [checkApiKeyStatus]);
+
   // 로컬 브라우저 저장소 연동 (폴백용)
   useEffect(() => {
     if (isFallbackMode) {
@@ -95,19 +108,6 @@ const App: React.FC = () => {
       if (savedProfile) setProfile(JSON.parse(savedProfile));
     }
   }, [isFallbackMode]);
-
-  // API 키 확인
-  useEffect(() => {
-    const checkKey = async () => {
-      // Cast window to any to access the pre-configured aistudio object safely
-      const aistudio = (window as any).aistudio;
-      if (aistudio?.hasSelectedApiKey) {
-        const has = await aistudio.hasSelectedApiKey();
-        setHasApiKey(has);
-      }
-    };
-    checkKey();
-  }, []);
 
   const handleConnectFolder = async () => {
     setStorageError(null);
@@ -125,21 +125,7 @@ const App: React.FC = () => {
       try {
         const loadedMemos = await fileStorage.loadMemos(handle);
         const loadedProfile = await fileStorage.loadProfile(handle);
-        
-        // 브라우저 저장소에 데이터가 있고 파일에는 없을 때 마이그레이션 제안
-        const localMemos = localStorage.getItem('fallback_memos');
-        if (loadedMemos.length === 0 && localMemos && JSON.parse(localMemos).length > 0) {
-          if (confirm('브라우저에 저장된 기존 데이터를 이 폴더로 옮길까요?')) {
-            const merged = JSON.parse(localMemos);
-            setAllMemos(merged);
-            await fileStorage.saveMemos(handle, merged);
-          } else {
-            setAllMemos(loadedMemos);
-          }
-        } else {
-          setAllMemos(loadedMemos);
-        }
-        
+        setAllMemos(loadedMemos);
         if (loadedProfile) setProfile(loadedProfile);
       } catch (err) {
         console.error("데이터 로드 실패:", err);
@@ -182,10 +168,16 @@ const App: React.FC = () => {
 
   const fetchFortune = useCallback(async () => {
     if (profile) {
+      const hasKey = await checkApiKeyStatus();
+      if (!hasKey) {
+        setFortune("");
+        return;
+      }
+
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
-        if (result.includes("API Key must be set") || result.includes("401") || result.includes("403")) {
+        if (result.includes("API Key must be set")) {
           setHasApiKey(false);
           setFortune("");
         } else {
@@ -198,17 +190,17 @@ const App: React.FC = () => {
         setLoadingFortune(false); 
       }
     }
-  }, [selectedDate, profile]);
+  }, [selectedDate, profile, checkApiKeyStatus]);
 
   useEffect(() => { fetchFortune(); }, [fetchFortune]);
 
   const handleOpenApiKeySelector = async () => {
-    // Cast window to any to access the pre-configured aistudio object safely
     const aistudio = (window as any).aistudio;
     if (aistudio?.openSelectKey) {
       await aistudio.openSelectKey();
+      // 선택 후 즉시 상태 업데이트 시도
       setHasApiKey(true);
-      fetchFortune();
+      setTimeout(fetchFortune, 500);
     }
   };
 
@@ -223,7 +215,6 @@ const App: React.FC = () => {
       completed: false,
       created_at: new Date().toISOString(),
       repeat_type: RepeatType.NONE,
-      reminder_time: reminderEnabled ? reminderTime : undefined,
     };
     const updatedMemos = [memo, ...allMemos];
     setAllMemos(updatedMemos);
@@ -248,17 +239,6 @@ const App: React.FC = () => {
     setProfile(newProfile);
     await saveToStorage(allMemos, newProfile);
     setShowProfileModal(false);
-  };
-
-  const handleExportBackup = () => {
-    const data = { memos: allMemos, profile, exportedAt: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `smartmemo-backup-${format(new Date(), 'yyyyMMdd')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const getDayDetails = useCallback((date: Date) => {
@@ -338,12 +318,6 @@ const App: React.FC = () => {
              <div className={`w-2.5 h-2.5 rounded-full ${dirHandle ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
              <span>{dirHandle ? '로컬 폴더 연동 중' : '브라우저 모드 (저장 불안정)'}</span>
            </div>
-           {!dirHandle && (
-             <button onClick={handleExportBackup} className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black hover:bg-indigo-100 transition-all">
-                <Download size={12} />
-                <span>백업하기</span>
-             </button>
-           )}
          </div>
          <button onClick={() => setShowProfileModal(true)} className="flex items-center space-x-2 text-gray-700 font-bold text-xs hover:text-indigo-600 transition-colors">
             <User size={16} className="text-indigo-500" />
@@ -391,14 +365,6 @@ const App: React.FC = () => {
                         </span>
                         {(holiday || dynamicHoliday) && <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[50px]">{holiday || dynamicHoliday}</span>}
                       </div>
-                      <div className="space-y-1">
-                        {dayMemos.slice(0, 3).map(m => (
-                          <div key={m.id} className="flex items-center space-x-1">
-                            <div className={`w-1 h-1 rounded-full shrink-0 ${m.type === MemoType.IDEA ? 'bg-amber-400' : m.type === MemoType.APPOINTMENT ? 'bg-rose-400' : 'bg-blue-400'}`} />
-                            <span className="text-[10px] text-gray-500 truncate font-bold">{m.content}</span>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                  );
                })}
@@ -444,7 +410,7 @@ const App: React.FC = () => {
                   </div>
                   <button 
                     onClick={handleOpenApiKeySelector}
-                    className="bg-gray-800 text-white px-5 py-3 rounded-xl text-xs font-black hover:bg-black transition-all shadow-md active:scale-95"
+                    className="bg-[#1e293b] text-white px-5 py-3 rounded-xl text-xs font-black hover:bg-black transition-all shadow-md active:scale-95"
                   >
                     확인
                   </button>
@@ -452,7 +418,7 @@ const App: React.FC = () => {
 
                 <div className="flex flex-col space-y-4">
                   <a 
-                    href="https://ai.google.dev/gemini-api/docs/billing" 
+                    href="https://aistudio.google.com/app/apikey" 
                     target="_blank" 
                     className="text-[10px] text-gray-400 hover:text-indigo-500 transition-colors flex items-center justify-end space-x-1 font-bold"
                   >
@@ -462,7 +428,7 @@ const App: React.FC = () => {
                   
                   <button 
                     onClick={handleOpenApiKeySelector}
-                    className="w-full bg-amber-400 text-amber-900 font-black py-4 rounded-2xl shadow-lg shadow-amber-100 hover:bg-amber-500 transition-all text-sm animate-bounce-short"
+                    className="w-full bg-[#facc15] text-[#1e293b] font-black py-4 rounded-2xl shadow-lg shadow-yellow-100 hover:bg-[#eab308] transition-all text-sm animate-bounce-short"
                   >
                     API 키를 확인해주세요
                   </button>
