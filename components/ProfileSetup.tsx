@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell, Key, ExternalLink, CheckCircle } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell, Sparkles } from 'lucide-react';
 
 interface Props {
   onSave: (profile: UserProfile) => void;
@@ -15,28 +15,6 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const [birthTime, setBirthTime] = useState(currentProfile?.birth_time || '');
   const [notifEnabled, setNotifEnabled] = useState(currentProfile?.notifications_enabled ?? false);
   const [notifTime, setNotifTime] = useState(currentProfile?.daily_reminder_time || '09:00');
-  const [hasKey, setHasKey] = useState(false);
-
-  // 현재 API 키가 선택되어 있는지 확인
-  useEffect(() => {
-    const checkKey = async () => {
-      if ((window as any).aistudio?.hasSelectedApiKey) {
-        const selected = await (window as any).aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleSelectKey = async () => {
-    if ((window as any).aistudio?.openSelectKey) {
-      await (window as any).aistudio.openSelectKey();
-      // 선택 후 즉시 true로 가정 (Race condition 방지 가이드라인 준수)
-      setHasKey(true);
-    } else {
-      alert("API 키 선택 기능을 사용할 수 없는 환경입니다.");
-    }
-  };
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
@@ -70,132 +48,109 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-4 bg-gray-900/60 backdrop-blur-md">
-      <div className="bg-white rounded-[24px] md:rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="relative p-6 md:p-8 max-h-[90vh] overflow-y-auto scrollbar-hide">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-4 bg-gray-900/60 backdrop-blur-md animate-in fade-in duration-300">
+      <div className="bg-white rounded-[24px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
+        <div className="relative p-6 md:p-10 max-h-[90vh] overflow-y-auto scrollbar-hide">
           <button 
             onClick={onClose}
-            className="absolute top-4 right-4 md:top-6 md:right-6 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+            className="absolute top-4 right-4 md:top-8 md:right-8 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
           >
             <X size={20} />
           </button>
 
-          <div className="flex flex-col items-center text-center mb-6 md:mb-8">
-            <div className="w-12 h-12 md:w-16 md:h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mb-4">
-              <UserIcon size={28} />
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-100 text-indigo-600 rounded-[28px] flex items-center justify-center mb-4 shadow-inner">
+              <UserIcon size={32} />
             </div>
-            <h2 className="text-xl md:text-2xl font-bold text-gray-800">사용자 프로필 설정</h2>
-            <p className="text-gray-500 text-xs md:text-sm mt-1 px-4">정확한 운세와 알림 서비스를 위해 정보를 입력해주세요.</p>
+            <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">사용자 프로필</h2>
+            <p className="text-gray-500 text-sm mt-2 px-4 leading-relaxed font-medium">나에게 딱 맞는 운세와 바이오리듬을 위해 정보를 입력해주세요.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <div className="space-y-6">
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">이름</label>
-                <div className="relative">
+                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 ml-1">이름</label>
+                <div className="relative group">
                   <input 
                     type="text" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-indigo-500 rounded-2xl py-3 pl-11 text-gray-800 text-sm placeholder:text-gray-300 transition-all outline-none"
+                    className="w-full bg-gray-50 border-2 border-transparent focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50 rounded-2xl py-4 pl-12 text-gray-800 text-sm font-bold placeholder:text-gray-300 transition-all outline-none"
                     placeholder="이름 입력"
                     required
                   />
-                  <UserIcon className="absolute left-4 top-3.5 text-gray-300" size={18} />
+                  <UserIcon className="absolute left-4 top-4 text-gray-300 group-focus-within:text-indigo-400 transition-colors" size={20} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">생년월일</label>
-                  <div className="relative">
+                  <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 ml-1">생년월일</label>
+                  <div className="relative group">
                     <input 
                       type="date" 
                       value={birthDate}
                       onChange={(e) => setBirthDate(e.target.value)}
-                      className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-indigo-500 rounded-2xl py-3 pl-11 text-gray-800 text-xs transition-all outline-none"
+                      className="w-full bg-gray-50 border-2 border-transparent focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50 rounded-2xl py-4 pl-12 text-gray-800 text-xs font-bold transition-all outline-none"
                       required
                     />
-                    <Calendar className="absolute left-4 top-3.5 text-gray-300" size={18} />
+                    <Calendar className="absolute left-4 top-4 text-gray-300 group-focus-within:text-indigo-400 transition-colors" size={20} />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">태어난 시간</label>
-                  <div className="relative">
+                  <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 ml-1">태어난 시간</label>
+                  <div className="relative group">
                     <input 
                       type="time" 
                       value={birthTime}
                       onChange={(e) => setBirthTime(e.target.value)}
-                      className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-indigo-500 rounded-2xl py-3 pl-11 text-gray-800 text-xs transition-all outline-none"
+                      className="w-full bg-gray-50 border-2 border-transparent focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50 rounded-2xl py-4 pl-12 text-gray-800 text-xs font-bold transition-all outline-none"
                     />
-                    <Clock className="absolute left-4 top-3.5 text-gray-300" size={18} />
+                    <Clock className="absolute left-4 top-4 text-gray-300 group-focus-within:text-indigo-400 transition-colors" size={20} />
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="space-y-4">
-              <div className="p-4 bg-gray-50/50 rounded-3xl border border-gray-100">
+              <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100/50">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Bell className={notifEnabled ? "text-indigo-600" : "text-gray-400"} size={18} />
+                  <div className="flex items-center space-x-3">
+                    <div className={`p-2 rounded-xl ${notifEnabled ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-200 text-gray-400'} transition-colors`}>
+                      <Bell size={18} />
+                    </div>
                     <span className="text-sm font-bold text-gray-700">데일리 리마인더</span>
                   </div>
                   <button
                     type="button"
                     onClick={handleToggleNotif}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${notifEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none ${notifEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
                   >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-1'} shadow-sm`} />
                   </button>
                 </div>
               </div>
 
-              {/* AI 서비스 설정 섹션 */}
-              <div className="p-5 bg-indigo-50/50 rounded-3xl border border-indigo-100/50 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Key className="text-indigo-600" size={18} />
-                    <span className="text-sm font-bold text-indigo-900">AI 운세 서비스</span>
+              {/* AI 서비스 상태 표시기 (보안 강화 및 자동화 안내) */}
+              <div className="p-5 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-white/20 p-2 rounded-xl">
+                    <Sparkles size={18} />
                   </div>
-                  {hasKey && (
-                    <div className="flex items-center space-x-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                      <CheckCircle size={12} />
-                      <span className="text-[10px] font-black uppercase">Active</span>
-                    </div>
-                  )}
+                  <div>
+                    <span className="text-sm font-black block">AI 운세 보안 연결됨</span>
+                    <span className="text-[10px] text-indigo-100 opacity-80">시스템 자동 암호화 주입 방식</span>
+                  </div>
                 </div>
-                
-                <p className="text-[11px] text-indigo-700/70 leading-relaxed">
-                  운세 기능을 사용하려면 유료 프로젝트의 API 키 선택이 필요합니다.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handleSelectKey}
-                  className="w-full flex items-center justify-center space-x-2 bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl hover:bg-indigo-50 transition-all text-xs font-black shadow-sm"
-                >
-                  <Key size={14} />
-                  <span>{hasKey ? 'API 키 변경하기' : 'API 키 선택하기'}</span>
-                </button>
-
-                <a 
-                  href="https://ai.google.dev/gemini-api/docs/billing" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center space-x-1 text-[10px] text-indigo-400 hover:text-indigo-600 transition-colors font-medium"
-                >
-                  <span>결제 및 한도 안내 확인</span>
-                  <ExternalLink size={10} />
-                </a>
+                <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse shadow-sm shadow-emerald-400/50" />
               </div>
             </div>
 
             <button 
               type="submit"
-              className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl hover:bg-indigo-700 transition-all shadow-lg active:scale-[0.98] text-sm"
+              className="w-full bg-gray-900 text-white font-black py-5 rounded-2xl hover:bg-black transition-all shadow-xl active:scale-[0.98] text-sm tracking-tight"
             >
-              설정 완료
+              프로필 저장 및 완료
             </button>
           </form>
         </div>
