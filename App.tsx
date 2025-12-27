@@ -25,8 +25,7 @@ import {
   Moon,
   FolderOpen,
   HardDrive,
-  Key,
-  Calendar as CalendarIcon
+  Key
 } from 'lucide-react';
 import { Lunar, Solar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType } from './types.ts';
@@ -37,11 +36,17 @@ import { fileStorage, getDirectoryHandle } from './services/fileSystemService.ts
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
+// 한국 표준 24절기 매핑 (한자/영문 -> 한글)
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
-  '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
+  '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한',
+  // 영문 대비
+  'Lichun': '입춘', 'Yushui': '우수', 'Jingzhe': '경칩', 'Chunfen': '춘분', 'Qingming': '청명', 'Guyu': '곡우',
+  'Lixia': '입하', 'Xiaoman': '소만', 'Mangzhong': '망종', 'Xiazhi': '하지', 'Xiaoshu': '소서', 'Dashu': '대서',
+  'Liqiu': '입추', 'Chushu': '처서', 'Bailu': '백로', 'Qiufen': '추분', 'Hanlu': '한로', 'Shuangjiang': '상강',
+  'Lidong': '입동', 'Xiaoxue': '소설', 'Daxue': '대설', 'Dongzhi': '동지', 'Xiaohan': '소한', 'Dahan': '대한'
 };
 
 const App: React.FC = () => {
@@ -253,20 +258,20 @@ const App: React.FC = () => {
                  const isCurrentMonth = isSameMonth(day, currentDate);
                  const dayOfWeek = getDay(day);
                  
-                 // 휴일/일요일: 빨강, 토요일: 파랑
-                 const dateColor = (dayOfWeek === 0 || holiday) ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700';
+                 // 일요일/공휴일: 빨강, 토요일: 파랑
+                 const dateColorClass = (dayOfWeek === 0 || holiday) ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700';
 
                  return (
-                    <div key={i} onClick={() => setSelectedDate(day)} className={`min-h-[100px] md:min-h-[130px] p-2 border-r border-b border-gray-50 cursor-pointer transition-all ${!isCurrentMonth ? 'opacity-20' : 'bg-white'} ${isSelected ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/10' : 'hover:bg-slate-50'}`}>
+                    <div key={i} onClick={() => setSelectedDate(day)} className={`min-h-[110px] md:min-h-[140px] p-2 border-r border-b border-gray-50 cursor-pointer transition-all ${!isCurrentMonth ? 'opacity-20' : 'bg-white'} ${isSelected ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/10' : 'hover:bg-slate-50'}`}>
                       <div className="flex justify-between items-start mb-1">
-                        <span className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm font-black ${isSelected ? 'bg-indigo-600 text-white shadow-lg' : isToday ? 'bg-gray-100' : dateColor}`}>
+                        <span className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-black ${isSelected ? 'bg-indigo-600 text-white shadow-lg' : isToday ? 'bg-gray-100' : dateColorClass}`}>
                           {format(day, 'd')}
                         </span>
-                        {holiday && <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[45px]">{holiday}</span>}
+                        {holiday && <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[50px]">{holiday}</span>}
                       </div>
                       <div className="flex flex-col space-y-0.5 mt-1">
-                        <span className="text-[9px] text-gray-300 font-medium">음 {lunar.getMonth()}.{lunar.getDay()}</span>
-                        {jieQi && <span className="text-[9px] text-indigo-500 font-bold">[{jieQi}]</span>}
+                        <span className="text-[9px] text-gray-300 font-medium">음력 {lunar.getMonth()}.{lunar.getDay()}</span>
+                        {jieQi && <span className="text-[9px] text-indigo-500 font-black">[{jieQi}]</span>}
                       </div>
                     </div>
                  );
@@ -312,7 +317,7 @@ const App: React.FC = () => {
           <div className="bg-white rounded-[40px] shadow-2xl p-8 border border-gray-50 min-h-[300px]">
             <h3 className="text-lg font-black mb-6">기록 목록</h3>
             <div className="space-y-3">
-              {currentDayMemos.map(memo => (
+              {currentDayMemos.length > 0 ? currentDayMemos.map(memo => (
                 <div key={memo.id} className="group flex items-start justify-between bg-slate-50/50 p-4 rounded-2xl hover:bg-white transition-all border border-transparent hover:border-indigo-100">
                   <div className="flex items-start space-x-3">
                     <button onClick={() => handleToggleMemo(memo.id)} className="mt-1">{memo.completed ? <CheckCircle2 className="text-emerald-500" size={18} /> : <Circle className="text-gray-300" size={18} />}</button>
@@ -323,7 +328,11 @@ const App: React.FC = () => {
                   </div>
                   <button onClick={() => handleDeleteMemo(memo.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-rose-500 transition-all"><Trash2 size={14} /></button>
                 </div>
-              ))}
+              )) : (
+                <div className="text-center py-12">
+                  <p className="text-xs text-gray-400 font-bold tracking-tight">기록된 메모가 없습니다.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 
 import { Lunar, Solar } from 'lunar-javascript';
-import { format, addDays, getDay, isSameDay, parseISO } from 'date-fns';
+import { format, addDays, getDay, parseISO } from 'date-fns';
 
 export const COLORS = {
   primary: '#4f46e5',
@@ -33,13 +33,17 @@ export const getHolidays = (year: number) => {
     const date = parseISO(dateStr);
     holidays[dateStr] = name;
 
-    // 대체 공휴일 적용 대상 (현충일, 신정 제외)
+    // 대체 공휴일 적용 대상: 삼일절, 어린이날, 광복절, 개천절, 한글날, 성탄절 (현충일, 신정 제외)
     const isSubstituteTarget = ['삼일절', '어린이날', '광복절', '개천절', '한글날', '성탄절'].includes(name);
     if (isSubstituteTarget) {
       const dayOfWeek = getDay(date);
       if (dayOfWeek === 0 || dayOfWeek === 6) { // 일요일(0) 또는 토요일(6)
+        // 토/일요일인 경우 다음 첫 번째 비공휴일로 지정
         let subDate = addDays(date, dayOfWeek === 0 ? 1 : 2);
-        // 월요일로 이동
+        // 만약 어린이날이 토요일이면 월요일이 대체공휴일, 일요일이면 월요일이 대체공휴일
+        // 일반적인 규칙에 따라 월요일을 우선으로 함
+        if (name === '어린이날' && dayOfWeek === 6) subDate = addDays(date, 2); 
+        
         const subDateStr = format(subDate, 'yyyy-MM-dd');
         holidays[subDateStr] = `대체공휴일(${name})`;
       }
@@ -55,14 +59,16 @@ export const getHolidays = (year: number) => {
     addDays(new Date(lNewYear.toYmdHms()), 1)
   ];
   
-  newYearDates.forEach((d, i) => {
+  let hasNewYearSunday = false;
+  newYearDates.forEach((d) => {
     const dStr = format(d, 'yyyy-MM-dd');
     holidays[dStr] = '설날 연휴';
-    if (getDay(d) === 0) { // 일요일과 겹치면 다음 첫 평일 대체
-      const sub = format(addDays(newYearDates[2], 1), 'yyyy-MM-dd');
-      holidays[sub] = '대체공휴일(설날)';
-    }
+    if (getDay(d) === 0) hasNewYearSunday = true;
   });
+  if (hasNewYearSunday) {
+    const sub = format(addDays(newYearDates[2], 1), 'yyyy-MM-dd');
+    holidays[sub] = '대체공휴일(설날)';
+  }
 
   // 추석 (음력 8월 15일 + 전후일)
   const lChuseok = Lunar.fromYmd(year, 8, 15).getSolar();
@@ -72,23 +78,26 @@ export const getHolidays = (year: number) => {
     addDays(new Date(lChuseok.toYmdHms()), 1)
   ];
   
+  let hasChuseokSunday = false;
   chuseokDates.forEach((d) => {
     const dStr = format(d, 'yyyy-MM-dd');
     holidays[dStr] = '추석 연휴';
-    if (getDay(d) === 0) {
-      const sub = format(addDays(chuseokDates[2], 1), 'yyyy-MM-dd');
-      holidays[sub] = '대체공휴일(추석)';
-    }
+    if (getDay(d) === 0) hasChuseokSunday = true;
   });
+  if (hasChuseokSunday) {
+    const sub = format(addDays(chuseokDates[2], 1), 'yyyy-MM-dd');
+    holidays[sub] = '대체공휴일(추석)';
+  }
 
-  // 부처님 오신 날 (음력 4월 8일)
+  // 부처님 오신 날 (음력 4월 8일) - 대체공휴일 적용 대상
   const lBuddha = Lunar.fromYmd(year, 4, 8).getSolar();
   const buddhaDate = new Date(lBuddha.toYmdHms());
   const buddhaStr = format(buddhaDate, 'yyyy-MM-dd');
   holidays[buddhaStr] = '부처님오신날';
   
-  if (getDay(buddhaDate) === 0 || getDay(buddhaDate) === 6) {
-    const sub = format(addDays(buddhaDate, getDay(buddhaDate) === 0 ? 1 : 2), 'yyyy-MM-dd');
+  const buddhaDayOfWeek = getDay(buddhaDate);
+  if (buddhaDayOfWeek === 0 || buddhaDayOfWeek === 6) {
+    const sub = format(addDays(buddhaDate, buddhaDayOfWeek === 0 ? 1 : 2), 'yyyy-MM-dd');
     holidays[sub] = '대체공휴일(부처님오신날)';
   }
 
