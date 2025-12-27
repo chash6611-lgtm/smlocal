@@ -40,21 +40,16 @@ import ProfileSetup from './components/ProfileSetup.tsx';
  * 모든 형태의 입력(한자, 영문 대소문자, 언더바 포함/미포함)을 한글로 변환합니다.
  */
 const JIE_QI_MAP: Record<string, string> = {
-  // 한자 (Traditional & Simplified)
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '惊蛰': '경칩', '春分': '춘분', '淸明': '청명', '清明': '청명', '穀雨': '곡우', '谷雨': '곡우',
-  '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '芒种': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '处暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
+  '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '芒종': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
+  '立秋': '입추', '處暑': '처서', '处暑': '처서', '白露': '백로', '秋분': '추분', '秋分': '추분', '寒露': '한로', '霜降': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한',
   
-  // 영문 (SNAKE_CASE & CamelCase & Normal)
-  'LI_CHUN': '입춘', 'YUSHUI': '우수', 'YU_SHUI': '우수', 'JINGZHE': '경칩', 'JING_ZHE': '경칩', 'CHUNFEN': '춘분', 'CHUN_FEN': '춘분',
-  'QINGMING': '청명', 'QING_MING': '청명', 'GUYU': '곡우', 'GU_YU': '곡우', 'LIXIA': '입하', 'LI_XIA': '입하',
-  'XIAOMAN': '소만', 'XIAO_MAN': '소만', 'MANGZHONG': '망종', 'MANG_ZHONG': '망종', 'XIAZHI': '하지', 'XIA_ZHI': '하지',
-  'XIAOSHU': '소서', 'XIAO_SHU': '소서', 'DASHU': '대서', 'DA_SHU': '대서', 'LIQIU': '입추', 'LI_QIU': '입추',
-  'CHUSHU': '처서', 'CHU_SHU': '처서', 'BAILU': '백로', 'BAI_LU': '백로', 'QIUFEN': '추분', 'QIU_FEN': '추분',
-  'HANLU': '한로', 'HAN_LU': '한로', 'SHUANGJIANG': '상강', 'SHUANG_JIANG': '상강', 'LIDONG': '입동', 'LI_DONG': '입동',
-  'XIAOXUE': '소설', 'XIAO_XUE': '소설', 'DAXUE': '대설', 'DA_XUE': '대설', 'DONGZHI': '동지', 'DONG_ZHI': '동지',
-  'XIAOHAN': '소한', 'XIAO_HAN': '소한', 'DAHAN': '대한', 'DA_HAN': '대한'
+  // 영문 정규화 대응 (JINGZHE, JING_ZHE 등)
+  'LICHUN': '입춘', 'YUSHUI': '우수', 'JINGZHE': '경칩', 'CHUNFEN': '춘분', 'QINGMING': '청명', 'GUYU': '곡우',
+  'LIXIA': '입하', 'XIAOMAN': '소만', 'MANGZHONG': '망종', 'XIAZHI': '하지', 'XIAOSHU': '소서', 'DASHU': '대서',
+  'LIQIU': '입추', 'CHUSHU': '처서', 'BAILU': '백로', 'QIUFEN': '추분', 'HANLU': '한로', 'SHUANGJIANG': '상강',
+  'LIDONG': '입동', 'XIAOXUE': '소설', 'DAXUE': '대설', 'DONGZHI': '동지', 'XIAOHAN': '소한', 'DAHAN': '대한'
 };
 
 const App: React.FC = () => {
@@ -70,8 +65,19 @@ const App: React.FC = () => {
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // API 키가 업데이트될 때마다 수동 주입 (geminiService 호환용)
+  const updateApiKey = (key: string) => {
+    if (key) {
+      (window as any).process = (window as any).process || { env: {} };
+      (window as any).process.env.API_KEY = key;
+    }
+  };
 
   useEffect(() => {
+    const savedKey = localStorage.getItem('user_gemini_api_key');
+    if (savedKey) updateApiKey(savedKey);
+    
     if (isFallbackMode) {
       const savedMemos = localStorage.getItem('fallback_memos');
       const savedProfile = localStorage.getItem('user_profile');
@@ -94,16 +100,11 @@ const App: React.FC = () => {
         const dateObj = new Date(solar.getYear(), solar.getMonth() - 1, solar.getDay());
         const kstYmd = format(dateObj, 'yyyy-MM-dd');
         
-        // 정규화 루틴: 공백 제거, 대문자 변환, 언더바 제거를 통해 매핑 확률 극대화
+        // 정규화: 모든 비교 대상을 대문자, 언더바 제거 상태로 통일
         const cleanName = name.trim();
-        const upperName = cleanName.toUpperCase();
-        const noUnderscore = upperName.replace(/_/g, '');
+        const upperName = cleanName.toUpperCase().replace(/_/g, '');
         
-        terms[kstYmd] = 
-          JIE_QI_MAP[cleanName] || 
-          JIE_QI_MAP[upperName] || 
-          JIE_QI_MAP[noUnderscore] || 
-          cleanName;
+        terms[kstYmd] = JIE_QI_MAP[cleanName] || JIE_QI_MAP[upperName] || cleanName;
       }
     });
     return terms;
@@ -154,6 +155,7 @@ const App: React.FC = () => {
     if (profile) {
       setLoadingFortune(true);
       try {
+        // 호출 시점에 최신 API 키 확인
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
         setFortune(result);
       } catch (err) { 
@@ -197,10 +199,12 @@ const App: React.FC = () => {
     saveToStorage(updated);
   };
 
-  const handleSaveProfile = (newProfile: UserProfile) => {
+  const handleSaveProfile = (newProfile: UserProfile, newApiKey?: string) => {
+    if (newApiKey) updateApiKey(newApiKey);
     setProfile(newProfile);
     saveToStorage(allMemos, newProfile);
     setShowProfileModal(false);
+    fetchFortune(); // 프로필 저장 후 운세 즉시 갱신
   };
 
   const currentDayMemos = useMemo(() => getFilteredMemos(allMemos, selectedDate), [allMemos, selectedDate]);
@@ -269,9 +273,7 @@ const App: React.FC = () => {
                  const isCurrentMonth = isSameMonth(day, currentDate);
                  const dayOfWeek = getDay(day);
                  
-                 // 일요일 및 공휴일 빨간색 표시 강화
-                 const isRedDay = dayOfWeek === 0 || holiday !== null;
-                 const dateColorClass = isRedDay ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700';
+                 const dateColorClass = (dayOfWeek === 0 || holiday !== null) ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700';
 
                  return (
                     <div key={i} onClick={() => setSelectedDate(day)} className={`min-h-[110px] md:min-h-[150px] p-2 border-r border-b border-gray-50 cursor-pointer transition-all ${!isCurrentMonth ? 'opacity-20' : 'bg-white'} ${isSelected ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/10' : 'hover:bg-slate-50'}`}>
@@ -280,7 +282,7 @@ const App: React.FC = () => {
                           {format(day, 'd')}
                         </span>
                         {holiday && (
-                          <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[60px] animate-in fade-in duration-300">
+                          <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[60px]">
                             {holiday}
                           </span>
                         )}
@@ -324,11 +326,10 @@ const App: React.FC = () => {
               <div className="animate-pulse space-y-3">
                 <div className="h-3 bg-gray-100 rounded w-3/4"></div>
                 <div className="h-3 bg-gray-100 rounded w-full"></div>
-                <div className="h-3 bg-gray-100 rounded w-5/6"></div>
               </div>
             ) : (
               <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap font-medium animate-in fade-in duration-500">
-                {fortune || (profile ? '오늘의 운세를 분석하는 중입니다...' : '프로필을 설정하시면 맞춤형 운세를 제공해드립니다.')}
+                {fortune || (profile ? '오늘의 운세를 분석하는 중입니다...' : '프로필에서 API 키를 설정해주세요.')}
               </p>
             )}
           </div>
@@ -341,7 +342,7 @@ const App: React.FC = () => {
                 value={newMemo} 
                 onChange={(e) => setNewMemo(e.target.value)} 
                 onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()} 
-                placeholder="오늘의 아이디어 혹은 할 일을 입력하세요..." 
+                placeholder="기록하고 싶은 내용을 입력하세요..." 
                 className="w-full bg-gray-50 rounded-2xl py-4 px-6 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none border border-transparent focus:border-indigo-100" 
               />
               <div className="flex gap-2">

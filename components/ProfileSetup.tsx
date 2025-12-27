@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell, Sparkles } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell, Key, ExternalLink, Eye, EyeOff } from 'lucide-react';
 
 interface Props {
-  onSave: (profile: UserProfile) => void;
+  onSave: (profile: UserProfile, apiKey?: string) => void;
   onClose: () => void;
   currentProfile: UserProfile | null;
 }
@@ -15,6 +15,10 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const [birthTime, setBirthTime] = useState(currentProfile?.birth_time || '');
   const [notifEnabled, setNotifEnabled] = useState(currentProfile?.notifications_enabled ?? false);
   const [notifTime, setNotifTime] = useState(currentProfile?.daily_reminder_time || '09:00');
+  
+  // API 키 관련 상태
+  const [apiKey, setApiKey] = useState(localStorage.getItem('user_gemini_api_key') || '');
+  const [showKey, setShowKey] = useState(false);
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
@@ -37,6 +41,14 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !birthDate) return;
+    
+    // API 키는 브라우저 로컬 저장소에 저장
+    if (apiKey) {
+      localStorage.setItem('user_gemini_api_key', apiKey);
+    } else {
+      localStorage.removeItem('user_gemini_api_key');
+    }
+
     onSave({
       id: currentProfile?.id || Math.random().toString(36).substr(2, 9),
       name,
@@ -44,7 +56,7 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
       birth_time: birthTime,
       notifications_enabled: notifEnabled,
       daily_reminder_time: notifTime
-    });
+    }, apiKey);
   };
 
   return (
@@ -66,8 +78,8 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
             <p className="text-gray-500 text-sm mt-2 px-4 leading-relaxed font-medium">나에게 딱 맞는 운세와 바이오리듬을 위해 정보를 입력해주세요.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-5">
               <div>
                 <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 ml-1">이름</label>
                 <div className="relative group">
@@ -113,36 +125,54 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
             </div>
 
             <div className="space-y-4">
-              <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100/50">
+              {/* API 키 설정 섹션 */}
+              <div className="p-5 bg-indigo-50/50 rounded-3xl border border-indigo-100/50 space-y-3">
+                <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Gemini API 키 (브라우저 보안 저장)</label>
+                <div className="relative group">
+                  <input 
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="w-full bg-white border-2 border-transparent focus:border-indigo-200 focus:ring-4 focus:ring-indigo-100/50 rounded-2xl py-3 pl-11 pr-12 text-gray-800 text-xs font-bold placeholder:text-gray-300 transition-all outline-none"
+                    placeholder="AI Studio에서 발급받은 키를 입력하세요"
+                  />
+                  <Key className="absolute left-4 top-3 text-indigo-300 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowKey(!showKey)}
+                    className="absolute right-4 top-3 text-gray-300 hover:text-indigo-500 transition-colors"
+                  >
+                    {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <div className="flex justify-between items-center px-1">
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-[10px] text-indigo-400 hover:text-indigo-600 flex items-center space-x-1 font-bold"
+                  >
+                    <span>키 발급 받기</span>
+                    <ExternalLink size={10} />
+                  </a>
+                  <p className="text-[9px] text-gray-400">※ 키는 사용자님의 브라우저에만 저장됩니다.</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100/50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-xl ${notifEnabled ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-200 text-gray-400'} transition-colors`}>
-                      <Bell size={18} />
-                    </div>
+                    <Bell className={notifEnabled ? "text-indigo-600" : "text-gray-400"} size={18} />
                     <span className="text-sm font-bold text-gray-700">데일리 리마인더</span>
                   </div>
                   <button
                     type="button"
                     onClick={handleToggleNotif}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none ${notifEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${notifEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
                   >
-                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-1'} shadow-sm`} />
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-1'} shadow-sm`} />
                   </button>
                 </div>
-              </div>
-
-              {/* AI 서비스 상태 표시기 (보안 강화 및 자동화 안내) */}
-              <div className="p-5 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100 flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-white/20 p-2 rounded-xl">
-                    <Sparkles size={18} />
-                  </div>
-                  <div>
-                    <span className="text-sm font-black block">AI 운세 보안 연결됨</span>
-                    <span className="text-[10px] text-indigo-100 opacity-80">시스템 자동 암호화 주입 방식</span>
-                  </div>
-                </div>
-                <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse shadow-sm shadow-emerald-400/50" />
               </div>
             </div>
 
