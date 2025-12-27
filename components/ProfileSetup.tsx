@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell, Send, Key, ExternalLink } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell, ExternalLink } from 'lucide-react';
 
 interface Props {
-  onSave: (profile: UserProfile, apiKey?: string) => void;
+  onSave: (profile: UserProfile) => void;
   onClose: () => void;
   currentProfile: UserProfile | null;
 }
@@ -15,7 +15,6 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const [birthTime, setBirthTime] = useState(currentProfile?.birth_time || '');
   const [notifEnabled, setNotifEnabled] = useState(currentProfile?.notifications_enabled ?? false);
   const [notifTime, setNotifTime] = useState(currentProfile?.daily_reminder_time || '09:00');
-  const [apiKey, setApiKey] = useState(localStorage.getItem('user_gemini_api_key') || '');
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
@@ -45,7 +44,7 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
       birth_time: birthTime,
       notifications_enabled: notifEnabled,
       daily_reminder_time: notifTime
-    }, apiKey);
+    });
   };
 
   return (
@@ -110,27 +109,6 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
                     <Clock className="absolute left-4 top-3.5 text-gray-300" size={18} />
                   </div>
                 </div>
-              </div>
-
-              <div className="pt-2 border-t border-gray-50">
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <label className="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Gemini API Key</label>
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" className="flex items-center space-x-1 text-[9px] text-gray-400 hover:text-indigo-600 transition-colors">
-                    <span>키 발급하기</span>
-                    <ExternalLink size={10} />
-                  </a>
-                </div>
-                <div className="relative">
-                  <input 
-                    type="password" 
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="w-full bg-indigo-50/30 border border-indigo-100 focus:ring-2 focus:ring-indigo-500 rounded-2xl py-3 pl-11 text-indigo-700 text-xs placeholder:text-indigo-200 transition-all outline-none"
-                    placeholder="Google AI Studio API 키를 붙여넣으세요"
-                  />
-                  <Key className="absolute left-4 top-3.5 text-indigo-300" size={18} />
-                </div>
-                <p className="text-[9px] text-gray-400 mt-2 px-1 leading-relaxed">입력하신 키는 사용자의 브라우저에만 암호화 저장되어 본인만 사용하게 됩니다.</p>
               </div>
             </div>
 

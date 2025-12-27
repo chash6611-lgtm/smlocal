@@ -24,8 +24,7 @@ import {
   Sparkles,
   Moon,
   FolderOpen,
-  HardDrive,
-  Key
+  HardDrive
 } from 'lucide-react';
 import { Lunar, Solar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType } from './types.ts';
@@ -38,20 +37,25 @@ import ProfileSetup from './components/ProfileSetup.tsx';
 
 /**
  * 한국 표준 24절기 통합 매핑 테이블
- * 라이브러리에서 넘어오는 한자, 대문자 영문, 소문자 영문 등을 모두 한글로 강제 매핑합니다.
+ * 중복된 키를 제거하고 정확한 명칭으로 매핑합니다.
  */
 const JIE_QI_MAP: Record<string, string> = {
-  // 한자 매핑
+  // 1. Traditional Chinese (Standard)
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한',
-  // 영문 대문자 매핑 (스크린샷의 DONG_ZHI 대응)
+
+  // 2. Simplified Chinese (If different)
+  '惊蛰': '경칩', '清明': '청명', '谷雨': '곡우', '小满': '소만', '芒种': '망종', '处暑': '처서',
+
+  // 3. English (SNAKE_CASE)
   'LI_CHUN': '입춘', 'YU_SHUI': '우수', 'JING_ZHE': '경칩', 'CHUN_FEN': '춘분', 'QING_MING': '청명', 'GU_YU': '곡우',
-  'LI_XIA': '입하', 'XIA_O_MAN': '소만', 'MANG_ZHONG': '망종', 'XIA_ZHI': '하지', 'XIA_O_SHU': '소서', 'DA_SHU': '대서',
+  'LI_XIA': '입하', 'XIAO_MAN': '소만', 'MANG_ZHONG': '망종', 'XIA_ZHI': '하지', 'XIAO_SHU': '소서', 'DA_SHU': '대서',
   'LI_QIU': '입추', 'CHU_SHU': '처서', 'BAI_LU': '백로', 'QIU_FEN': '추분', 'HAN_LU': '한로', 'SHUANG_JIANG': '상강',
-  'LI_DONG': '입동', 'XIA_O_XUE': '소설', 'DA_XUE': '대설', 'DONG_ZHI': '동지', 'XIA_O_HAN': '소한', 'DA_HAN': '대한',
-  // 영문 일반 매핑
+  'LI_DONG': '입동', 'XIAO_XUE': '소설', 'DA_XUE': '대설', 'DONG_ZHI': '동지', 'XIAO_HAN': '소한', 'DA_HAN': '대한',
+
+  // 4. English (CamelCase)
   'Lichun': '입춘', 'Yushui': '우수', 'Jingzhe': '경칩', 'Chunfen': '춘분', 'Qingming': '청명', 'Guyu': '곡우',
   'Lixia': '입하', 'Xiaoman': '소만', 'Mangzhong': '망종', 'Xiazhi': '하지', 'Xiaoshu': '소서', 'Dashu': '대서',
   'Liqiu': '입추', 'Chushu': '처서', 'Bailu': '백로', 'Qiufen': '추분', 'Hanlu': '한로', 'Shuangjiang': '상강',
@@ -71,14 +75,6 @@ const App: React.FC = () => {
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [userApiKey, setUserApiKey] = useState<string>(localStorage.getItem('user_gemini_api_key') || '');
-
-  useEffect(() => {
-    if (userApiKey) {
-      (window as any).process = (window as any).process || { env: {} };
-      (window as any).process.env.API_KEY = userApiKey;
-    }
-  }, [userApiKey]);
 
   useEffect(() => {
     if (isFallbackMode) {
@@ -101,7 +97,6 @@ const App: React.FC = () => {
       if (solar) {
         const dateObj = new Date(solar.getYear(), solar.getMonth() - 1, solar.getDay());
         const kstYmd = format(dateObj, 'yyyy-MM-dd');
-        // 매핑 테이블에서 찾고, 없으면 대문자로 변환해서 다시 시도
         terms[kstYmd] = JIE_QI_MAP[name] || JIE_QI_MAP[name.toUpperCase()] || name;
       }
     });
@@ -146,7 +141,7 @@ const App: React.FC = () => {
   };
 
   const fetchFortune = useCallback(async () => {
-    if (profile && userApiKey) {
+    if (profile) {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
@@ -157,7 +152,7 @@ const App: React.FC = () => {
         setLoadingFortune(false); 
       }
     }
-  }, [selectedDate, profile, userApiKey]);
+  }, [selectedDate, profile]);
 
   useEffect(() => { fetchFortune(); }, [fetchFortune]);
 
@@ -192,12 +187,8 @@ const App: React.FC = () => {
     saveToStorage(updated);
   };
 
-  const handleSaveProfile = (newProfile: UserProfile, apiKey?: string) => {
+  const handleSaveProfile = (newProfile: UserProfile) => {
     setProfile(newProfile);
-    if (apiKey) {
-      localStorage.setItem('user_gemini_api_key', apiKey);
-      setUserApiKey(apiKey);
-    }
     saveToStorage(allMemos, newProfile);
     setShowProfileModal(false);
   };
@@ -268,7 +259,6 @@ const App: React.FC = () => {
                  const isCurrentMonth = isSameMonth(day, currentDate);
                  const dayOfWeek = getDay(day);
                  
-                 // 일요일/공휴일: 빨강, 토요일: 파랑
                  const dateColorClass = (dayOfWeek === 0 || holiday) ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700';
 
                  return (
