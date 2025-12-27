@@ -61,7 +61,7 @@ import ProfileSetup from './components/ProfileSetup.tsx';
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
@@ -76,13 +76,12 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [newMemo, setNewMemo] = useState('');
   const [selectedType, setSelectedType] = useState<MemoType>(MemoType.TODO);
-  const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
-  // API 키 확인
+  // API 키 확인 상태 초기화
   const checkApiKeyStatus = useCallback(async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio?.hasSelectedApiKey) {
@@ -165,17 +164,10 @@ const App: React.FC = () => {
   }, [currentDate.getFullYear()]);
 
   const fetchFortune = useCallback(async () => {
-    if (profile) {
-      const hasKey = await checkApiKeyStatus();
-      if (!hasKey) {
-        setFortune("");
-        return;
-      }
-
+    if (profile && hasApiKey) {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
-        // If the result says key is missing, update state
         if (result.includes("API Key must be set") || result.includes("Requested entity was not found")) {
           setHasApiKey(false);
           setFortune("");
@@ -189,20 +181,20 @@ const App: React.FC = () => {
         setLoadingFortune(false); 
       }
     }
-  }, [selectedDate, profile, checkApiKeyStatus]);
+  }, [selectedDate, profile, hasApiKey]);
 
   useEffect(() => { fetchFortune(); }, [fetchFortune]);
 
   const handleOpenApiKeySelector = async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio?.openSelectKey) {
-      await aistudio.openSelectKey();
-      // After opening the dialog, we assume the key is being selected.
-      setHasApiKey(true);
-      // Wait a bit and then refresh the fortune
-      setTimeout(() => {
-        fetchFortune();
-      }, 1000);
+      try {
+        await aistudio.openSelectKey();
+        // 키 선택 창이 열리면 사용자가 키를 선택할 것으로 가정하고 상태를 업데이트합니다.
+        setHasApiKey(true);
+      } catch (e) {
+        console.error("API 키 선택 창을 여는 데 실패했습니다.", e);
+      }
     }
   };
 
@@ -406,15 +398,18 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="flex items-center space-x-3">
-                  <div 
-                    onClick={handleOpenApiKeySelector}
-                    className="flex-1 bg-[#f8fafc] border border-[#f1f5f9] rounded-[14px] px-5 py-3.5 text-xs text-gray-400 font-medium cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    API 키를 선택해주세요
+                  <div className="relative flex-1">
+                    <input 
+                      type="text"
+                      readOnly
+                      placeholder="API 키를 선택해주세요"
+                      onClick={handleOpenApiKeySelector}
+                      className="w-full bg-[#f8fafc] border border-[#f1f5f9] rounded-[14px] px-5 py-3.5 text-xs text-gray-400 font-medium cursor-pointer hover:bg-gray-50 transition-colors outline-none"
+                    />
                   </div>
                   <button 
                     onClick={handleOpenApiKeySelector}
-                    className="bg-[#1e293b] text-white px-6 py-3.5 rounded-[14px] text-sm font-black hover:bg-[#0f172a] transition-all shadow-md active:scale-95"
+                    className="bg-[#1e293b] text-white px-6 py-3.5 rounded-[14px] text-sm font-black hover:bg-[#0f172a] transition-all shadow-md active:scale-95 whitespace-nowrap"
                   >
                     확인
                   </button>
