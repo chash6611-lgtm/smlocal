@@ -1,22 +1,24 @@
 
 {
-  "name": "AI와 함께하는 자기 주도 학습",
-  "short_name": "AI 학습",
-  "description": "학생들이 교육과정의 성취기준을 선택하면, Google AI가 성취기준에 대한 자세한 설명을 예시와 함께 제공하고 맞춤형 문제를 출제하여 자기주도학습을 돕는 웹앱입니다. 학습 결과는 로컬에 저장되어 자신의 성취도를 데이터로 확인할 수 있습니다.",
-  "start_url": "/",
+  "name": "Daily Harmony",
+  "short_name": "Harmony",
+  "description": "AI 운세와 바이오리듬을 포함한 프리미엄 일별 메모장",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#4f46e5",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "./icon.svg",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     },
     {
-      "src": "icon-512.png",
+      "src": "./icon.svg",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
