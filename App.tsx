@@ -36,13 +36,22 @@ import { fileStorage, getDirectoryHandle } from './services/fileSystemService.ts
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// 한국 표준 24절기 매핑 (한자/영문 -> 한글)
+/**
+ * 한국 표준 24절기 통합 매핑 테이블
+ * 라이브러리에서 넘어오는 한자, 대문자 영문, 소문자 영문 등을 모두 한글로 강제 매핑합니다.
+ */
 const JIE_QI_MAP: Record<string, string> = {
+  // 한자 매핑
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한',
-  // 영문 대비
+  // 영문 대문자 매핑 (스크린샷의 DONG_ZHI 대응)
+  'LI_CHUN': '입춘', 'YU_SHUI': '우수', 'JING_ZHE': '경칩', 'CHUN_FEN': '춘분', 'QING_MING': '청명', 'GU_YU': '곡우',
+  'LI_XIA': '입하', 'XIA_O_MAN': '소만', 'MANG_ZHONG': '망종', 'XIA_ZHI': '하지', 'XIA_O_SHU': '소서', 'DA_SHU': '대서',
+  'LI_QIU': '입추', 'CHU_SHU': '처서', 'BAI_LU': '백로', 'QIU_FEN': '추분', 'HAN_LU': '한로', 'SHUANG_JIANG': '상강',
+  'LI_DONG': '입동', 'XIA_O_XUE': '소설', 'DA_XUE': '대설', 'DONG_ZHI': '동지', 'XIA_O_HAN': '소한', 'DA_HAN': '대한',
+  // 영문 일반 매핑
   'Lichun': '입춘', 'Yushui': '우수', 'Jingzhe': '경칩', 'Chunfen': '춘분', 'Qingming': '청명', 'Guyu': '곡우',
   'Lixia': '입하', 'Xiaoman': '소만', 'Mangzhong': '망종', 'Xiazhi': '하지', 'Xiaoshu': '소서', 'Dashu': '대서',
   'Liqiu': '입추', 'Chushu': '처서', 'Bailu': '백로', 'Qiufen': '추분', 'Hanlu': '한로', 'Shuangjiang': '상강',
@@ -92,7 +101,8 @@ const App: React.FC = () => {
       if (solar) {
         const dateObj = new Date(solar.getYear(), solar.getMonth() - 1, solar.getDay());
         const kstYmd = format(dateObj, 'yyyy-MM-dd');
-        terms[kstYmd] = JIE_QI_MAP[name] || name;
+        // 매핑 테이블에서 찾고, 없으면 대문자로 변환해서 다시 시도
+        terms[kstYmd] = JIE_QI_MAP[name] || JIE_QI_MAP[name.toUpperCase()] || name;
       }
     });
     return terms;
@@ -243,7 +253,7 @@ const App: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
-          <div className="bg-white rounded-[40px] p-4 md:p-8 shadow-2xl shadow-gray-200/40 border border-gray-50">
+          <div className="bg-white rounded-[40px] p-4 md:p-8 shadow-2xl shadow-gray-200/40 border border-gray-50 overflow-hidden">
             <div className="grid grid-cols-7 mb-4">
               {["일", "월", "화", "수", "목", "금", "토"].map((day, i) => (
                 <div key={day} className={`text-center font-black text-xs ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-400'}`}>{day}</div>
@@ -262,16 +272,20 @@ const App: React.FC = () => {
                  const dateColorClass = (dayOfWeek === 0 || holiday) ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700';
 
                  return (
-                    <div key={i} onClick={() => setSelectedDate(day)} className={`min-h-[110px] md:min-h-[140px] p-2 border-r border-b border-gray-50 cursor-pointer transition-all ${!isCurrentMonth ? 'opacity-20' : 'bg-white'} ${isSelected ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/10' : 'hover:bg-slate-50'}`}>
+                    <div key={i} onClick={() => setSelectedDate(day)} className={`min-h-[110px] md:min-h-[150px] p-2 border-r border-b border-gray-50 cursor-pointer transition-all ${!isCurrentMonth ? 'opacity-20' : 'bg-white'} ${isSelected ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/10' : 'hover:bg-slate-50'}`}>
                       <div className="flex justify-between items-start mb-1">
                         <span className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-black ${isSelected ? 'bg-indigo-600 text-white shadow-lg' : isToday ? 'bg-gray-100' : dateColorClass}`}>
                           {format(day, 'd')}
                         </span>
-                        {holiday && <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[50px]">{holiday}</span>}
+                        {holiday && <span className="text-[9px] text-red-500 font-black text-right leading-tight max-w-[60px]">{holiday}</span>}
                       </div>
-                      <div className="flex flex-col space-y-0.5 mt-1">
-                        <span className="text-[9px] text-gray-300 font-medium">음력 {lunar.getMonth()}.{lunar.getDay()}</span>
-                        {jieQi && <span className="text-[9px] text-indigo-500 font-black">[{jieQi}]</span>}
+                      <div className="flex flex-col space-y-1 mt-2">
+                        <span className="text-[9px] text-gray-400 font-medium">음력 {lunar.getMonth()}.{lunar.getDay()}</span>
+                        {jieQi && (
+                          <span className="text-[9px] text-indigo-600 font-black bg-indigo-50 px-1.5 py-0.5 rounded-md inline-block w-fit">
+                            {jieQi}
+                          </span>
+                        )}
                       </div>
                     </div>
                  );
