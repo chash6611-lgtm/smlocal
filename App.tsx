@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   format, 
@@ -45,7 +44,8 @@ import {
   HardDrive,
   AlertCircle,
   ExternalLink,
-  Download
+  Download,
+  Key
 } from 'lucide-react';
 import { Lunar, Solar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
@@ -57,8 +57,11 @@ import { fileStorage, getDirectoryHandle } from './services/fileSystemService.ts
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
+// Removed redundant 'aistudio' declaration to fix the TypeScript error: "All declarations of 'aistudio' must have identical modifiers."
+// The environment already provides the correct 'AIStudio' type definition for window.aistudio.
+
 const JIE_QI_MAP: Record<string, string> = {
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春分': '춘분', '淸明': '청명', '穀雨': '곡우',
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
@@ -81,6 +84,7 @@ const App: React.FC = () => {
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   // 로컬 브라우저 저장소 연동 (폴백용)
   useEffect(() => {
@@ -91,6 +95,19 @@ const App: React.FC = () => {
       if (savedProfile) setProfile(JSON.parse(savedProfile));
     }
   }, [isFallbackMode]);
+
+  // API 키 확인
+  useEffect(() => {
+    const checkKey = async () => {
+      // Cast window to any to access the pre-configured aistudio object safely
+      const aistudio = (window as any).aistudio;
+      if (aistudio?.hasSelectedApiKey) {
+        const has = await aistudio.hasSelectedApiKey();
+        setHasApiKey(has);
+      }
+    };
+    checkKey();
+  }, []);
 
   const handleConnectFolder = async () => {
     setStorageError(null);
@@ -168,12 +185,32 @@ const App: React.FC = () => {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
-        setFortune(result);
-      } catch (err) { setFortune("운세를 불러오지 못했습니다."); } finally { setLoadingFortune(false); }
+        if (result.includes("API Key must be set") || result.includes("401") || result.includes("403")) {
+          setHasApiKey(false);
+          setFortune("");
+        } else {
+          setFortune(result);
+          setHasApiKey(true);
+        }
+      } catch (err: any) { 
+        setFortune("운세를 불러오지 못했습니다."); 
+      } finally { 
+        setLoadingFortune(false); 
+      }
     }
   }, [selectedDate, profile]);
 
   useEffect(() => { fetchFortune(); }, [fetchFortune]);
+
+  const handleOpenApiKeySelector = async () => {
+    // Cast window to any to access the pre-configured aistudio object safely
+    const aistudio = (window as any).aistudio;
+    if (aistudio?.openSelectKey) {
+      await aistudio.openSelectKey();
+      setHasApiKey(true);
+      fetchFortune();
+    }
+  };
 
   const handleAddMemo = async () => {
     if (!newMemo.trim()) return;
@@ -388,10 +425,59 @@ const App: React.FC = () => {
 
           <div className="bg-white rounded-[40px] shadow-2xl shadow-gray-200/40 p-8 border border-gray-50">
             <div className="flex items-center space-x-2 mb-6 text-indigo-500"><Sparkles size={18} /><h3 className="text-lg font-black">오늘의 운세</h3></div>
-            {loadingFortune ? (
-              <div className="animate-pulse space-y-3"><div className="h-4 bg-gray-50 rounded w-3/4"></div><div className="h-4 bg-gray-50 rounded w-full"></div></div>
+            
+            {!hasApiKey ? (
+              <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-black text-gray-800 flex items-center space-x-2">
+                    <Key size={16} className="text-amber-500" />
+                    <span>Google AI Studio API 키</span>
+                  </h4>
+                  <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
+                    Google AI 기반의 맞춤형 콘텐츠 생성을 위해서는 API 키 설정이 필요합니다. 다만, 만 18세 미만 이용자는 직접 API 키를 발급받을 수 없으므로, 보호자가 대신 무료 API 키를 발급한 후 학생에게 전달(예: 이메일 전송)하여 사용할 수 있습니다.
+                  </p>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <div className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-xs text-gray-400 font-medium">
+                    API 키를 선택해주세요
+                  </div>
+                  <button 
+                    onClick={handleOpenApiKeySelector}
+                    className="bg-gray-800 text-white px-5 py-3 rounded-xl text-xs font-black hover:bg-black transition-all shadow-md active:scale-95"
+                  >
+                    확인
+                  </button>
+                </div>
+
+                <div className="flex flex-col space-y-4">
+                  <a 
+                    href="https://ai.google.dev/gemini-api/docs/billing" 
+                    target="_blank" 
+                    className="text-[10px] text-gray-400 hover:text-indigo-500 transition-colors flex items-center justify-end space-x-1 font-bold"
+                  >
+                    <span>무료 API 키 발급받기</span>
+                    <ExternalLink size={10} />
+                  </a>
+                  
+                  <button 
+                    onClick={handleOpenApiKeySelector}
+                    className="w-full bg-amber-400 text-amber-900 font-black py-4 rounded-2xl shadow-lg shadow-amber-100 hover:bg-amber-500 transition-all text-sm animate-bounce-short"
+                  >
+                    API 키를 확인해주세요
+                  </button>
+                </div>
+              </div>
+            ) : loadingFortune ? (
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 bg-gray-50 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-50 rounded w-full"></div>
+                <div className="h-4 bg-gray-50 rounded w-5/6"></div>
+              </div>
             ) : (
-              <p className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune || '프로필 정보를 입력하시면 AI 운세가 나타납니다.'}</p>
+              <p className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                {fortune || '프로필 정보를 입력하시면 AI 운세가 나타납니다.'}
+              </p>
             )}
           </div>
 
@@ -448,6 +534,15 @@ const App: React.FC = () => {
         </div>
       </div>
       {showProfileModal && <ProfileSetup onSave={handleSaveProfile} onClose={() => setShowProfileModal(false)} currentProfile={profile} />}
+      <style>{`
+        @keyframes bounce-short {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        .animate-bounce-short {
+          animation: bounce-short 1.5s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 };

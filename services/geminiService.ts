@@ -1,8 +1,11 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// @google/genai coding guidelines: Obtained exclusively from process.env.API_KEY.
 export async function getDailyFortune(birthDate: string, birthTime: string, targetDate: string) {
+  if (!process.env.API_KEY) {
+    return "An API Key must be set when running in a browser";
+  }
+
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `당신은 유능한 명리학자이자 운세 상담가입니다. 
@@ -27,6 +30,9 @@ export async function getDailyFortune(birthDate: string, birthTime: string, targ
     }
   } catch (error: any) {
     console.error("Gemini API Error:", error);
+    if (error.message?.includes("API Key")) {
+      return "An API Key must be set when running in a browser";
+    }
     return `운세를 가져오는 중 오류가 발생했습니다: ${error.message || "연결 오류"}`;
   }
 }
