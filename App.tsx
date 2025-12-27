@@ -1,73 +1,59 @@
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   format, 
   addMonths, 
   subMonths, 
   startOfMonth, 
-  endOfMonth, 
   startOfWeek, 
-  endOfWeek, 
   isSameMonth, 
   isSameDay, 
   addDays,
-  subDays,
-  parse,
-  subMinutes,
   getDay
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { 
-  Calendar as CalendarIcon, 
   ChevronLeft, 
   ChevronRight, 
   Plus, 
   CheckCircle2, 
   Circle, 
   Trash2, 
-  Lightbulb, 
-  CalendarCheck, 
-  ListTodo, 
   User, 
   Activity,
   Sparkles,
   Moon,
-  Leaf,
-  Bell,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Edit2,
-  Check,
-  X,
-  RefreshCw,
   FolderOpen,
   HardDrive,
-  AlertCircle,
-  ExternalLink,
-  Download,
-  Key
+  Key,
+  AlertCircle
 } from 'lucide-react';
 import { Lunar, Solar } from 'lunar-javascript';
-import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
+import { Memo, MemoType, UserProfile, RepeatType } from './types.ts';
 import { SOLAR_HOLIDAYS } from './constants.tsx';
 import { getFilteredMemos } from './services/supabaseClient.ts';
-import { calculateBiorhythm } from './services/biorhythmService.ts';
 import { getDailyFortune } from './services/geminiService.ts';
 import { fileStorage, getDirectoryHandle } from './services/fileSystemService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
+// 사용자가 입력한 API 키를 시스템 변수에 주입하는 유틸리티
+const injectApiKey = (key: string) => {
+  if (key) {
+    (window as any).process = (window as any).process || { env: {} };
+    (window as any).process.env.API_KEY = key;
+  }
+};
+
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
-  '立夏': '입하', '小滿': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
+  '立夏': '입하', '小滿': '소만', '芒종': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
 const App: React.FC = () => {
   const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
-  const [storageError, setStorageError] = useState<string | null>(null);
   const [isFallbackMode, setIsFallbackMode] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -79,21 +65,12 @@ const App: React.FC = () => {
   const [fortune, setFortune] = useState<string>('');
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
+  const [userApiKey, setUserApiKey] = useState<string>(localStorage.getItem('user_gemini_api_key') || '');
 
-  const checkApiKeyStatus = useCallback(async () => {
-    const aistudio = (window as any).aistudio;
-    if (aistudio?.hasSelectedApiKey) {
-      const has = await aistudio.hasSelectedApiKey();
-      setHasApiKey(has);
-      return has;
-    }
-    return !!process.env.API_KEY;
-  }, []);
-
+  // 앱 시작 시 저장된 키가 있다면 주입
   useEffect(() => {
-    checkApiKeyStatus();
-  }, [checkApiKeyStatus]);
+    if (userApiKey) injectApiKey(userApiKey);
+  }, [userApiKey]);
 
   useEffect(() => {
     if (isFallbackMode) {
@@ -105,9 +82,7 @@ const App: React.FC = () => {
   }, [isFallbackMode]);
 
   const handleConnectFolder = async () => {
-    setStorageError(null);
-    const { handle, error } = await getDirectoryHandle();
-    if (error) { setStorageError(error); return; }
+    const { handle } = await getDirectoryHandle();
     if (handle) {
       setDirHandle(handle);
       setIsFallbackMode(false);
@@ -135,65 +110,23 @@ const App: React.FC = () => {
     }
   };
 
-  const getKoreanLunar = useCallback((date: Date) => {
-    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
-    return Lunar.fromDate(d);
-  }, []);
-
-  const kstJieQiMap = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const terms: Record<string, string> = {};
-    [year - 1, year, year + 1].forEach(y => {
-      const l = Lunar.fromYmd(y, 1, 1);
-      const jieQiTable = l.getJieQiTable();
-      Object.keys(jieQiTable).forEach((name: string) => {
-        const solar = (jieQiTable as any)[name] as Solar;
-        if (!solar) return;
-        const kstYmd = format(new Date(solar.toYmdHms().replace(' ', 'T') + '+08:00'), 'yyyy-MM-dd');
-        terms[kstYmd] = JIE_QI_MAP[name] || name;
-      });
-    });
-    return terms;
-  }, [currentDate.getFullYear()]);
-
   const fetchFortune = useCallback(async () => {
-    if (profile && hasApiKey) {
+    if (profile && (userApiKey || process.env.API_KEY)) {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
-        if (result.includes("API Key must be set") || result.includes("Requested entity was not found")) {
-          setHasApiKey(false);
-          setFortune("");
-        } else {
-          setFortune(result);
-          setHasApiKey(true);
-        }
+        setFortune(result);
       } catch (err: any) { 
-        setFortune("운세를 불러오지 못했습니다."); 
+        setFortune("운세를 불러오지 못했습니다. 프로필의 API 키를 다시 확인해주세요."); 
       } finally { 
         setLoadingFortune(false); 
       }
+    } else {
+      setFortune("");
     }
-  }, [selectedDate, profile, hasApiKey]);
+  }, [selectedDate, profile, userApiKey]);
 
   useEffect(() => { fetchFortune(); }, [fetchFortune]);
-
-  const handleOpenApiKeySelector = async () => {
-    const aistudio = (window as any).aistudio;
-    if (aistudio?.openSelectKey) {
-      try {
-        await aistudio.openSelectKey();
-        // 시스템 팝업을 성공적으로 호출했으므로 키가 선택된 것으로 간주하고 진행합니다.
-        setHasApiKey(true);
-        // 비동기 갱신을 위해 약간의 지연 후 운세를 다시 시도합니다.
-        setTimeout(() => fetchFortune(), 1000);
-      } catch (e) {
-        console.error("API 키 선택 창 호출 실패:", e);
-      }
-    } else {
-      alert("현재 환경에서 자동 키 선택 기능을 지원하지 않습니다.");
-    }
-  };
 
   const handleAddMemo = async () => {
     if (!newMemo.trim()) return;
@@ -226,14 +159,36 @@ const App: React.FC = () => {
     await saveToStorage(updated);
   };
 
-  const handleSaveProfile = async (newProfile: UserProfile) => {
+  const handleSaveProfile = async (newProfile: UserProfile, apiKey?: string) => {
     setProfile(newProfile);
+    if (apiKey !== undefined) {
+      localStorage.setItem('user_gemini_api_key', apiKey);
+      setUserApiKey(apiKey);
+      injectApiKey(apiKey);
+    }
     await saveToStorage(allMemos, newProfile);
     setShowProfileModal(false);
+    fetchFortune();
   };
 
+  const kstJieQiMap = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const terms: Record<string, string> = {};
+    const l = Lunar.fromYmd(year, 1, 1);
+    const jieQiTable = l.getJieQiTable();
+    Object.keys(jieQiTable).forEach((name: string) => {
+      const solar = (jieQiTable as any)[name] as Solar;
+      if (solar) {
+        const kstYmd = format(new Date(solar.toYmdHms().replace(' ', 'T') + '+08:00'), 'yyyy-MM-dd');
+        terms[kstYmd] = JIE_QI_MAP[name] || name;
+      }
+    });
+    return terms;
+  }, [currentDate.getFullYear()]);
+
   const getDayDetails = useCallback((date: Date) => {
-    const lunar = getKoreanLunar(date);
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+    const lunar = Lunar.fromDate(d);
     const dateKey = format(date, 'yyyy-MM-dd');
     const mmdd = format(date, 'MM-dd');
     const holiday = SOLAR_HOLIDAYS[mmdd] || null;
@@ -242,14 +197,14 @@ const App: React.FC = () => {
     if (lunar.getMonth() === 1 && lunar.getDay() === 1) dynamicHoliday = '설날';
     else if (lunar.getMonth() === 8 && lunar.getDay() === 15) dynamicHoliday = '추석';
     return { holiday, dynamicHoliday, jieQi, lunar };
-  }, [kstJieQiMap, getKoreanLunar]);
+  }, [kstJieQiMap]);
 
   const currentDayMemos = useMemo(() => getFilteredMemos(allMemos, selectedDate), [allMemos, selectedDate]);
 
   if (!dirHandle && !isFallbackMode) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="max-w-md w-full bg-white rounded-[48px] shadow-2xl p-12 text-center space-y-10 animate-in fade-in zoom-in duration-500 border border-white">
+        <div className="max-w-md w-full bg-white rounded-[48px] shadow-2xl p-12 text-center space-y-10 border border-white">
           <div className="w-28 h-28 bg-indigo-600 rounded-[36px] flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200">
             <HardDrive size={52} className="text-white" />
           </div>
@@ -310,7 +265,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-7 border-t border-l border-gray-50 rounded-3xl overflow-hidden">
                {Array.from({ length: 42 }).map((_, i) => {
                  const day = addDays(startOfWeek(startOfMonth(currentDate)), i);
-                 const { holiday, dynamicHoliday, jieQi } = getDayDetails(day);
+                 const { holiday, dynamicHoliday } = getDayDetails(day);
                  const isSelected = isSameDay(day, selectedDate);
                  const isToday = isSameDay(day, new Date());
                  const isCurrentMonth = isSameMonth(day, currentDate);
@@ -346,48 +301,32 @@ const App: React.FC = () => {
 
           <div className="bg-white rounded-[40px] shadow-2xl shadow-gray-200/40 p-8 border border-gray-50">
             <div className="flex items-center space-x-2 mb-6 text-[#6366f1]"><Sparkles size={20} /><h3 className="text-xl font-black">오늘의 운세</h3></div>
-            
-            {!hasApiKey ? (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="space-y-3">
-                  <h4 className="text-base font-black text-gray-900 flex items-center space-x-2">
-                    <Key size={18} className="text-[#facc15]" />
-                    <span>Google AI Studio API 키</span>
-                  </h4>
-                  <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
-                    Google AI 기반의 맞춤형 콘텐츠 생성을 위해서는 API 키 설정이 필요합니다. 다만, 만 18세 미만 이용자는 직접 API 키를 발급받을 수 없으므로, 보호자가 대신 무료 API 키를 발급한 후 학생에게 전달(예: 이메일 전송)하여 사용할 수 있습니다.
-                  </p>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <button 
-                    onClick={handleOpenApiKeySelector}
-                    className="flex-1 bg-[#f8fafc] border border-[#f1f5f9] rounded-[14px] px-5 py-3.5 text-xs text-left text-gray-400 font-medium hover:bg-gray-100 transition-colors shadow-inner"
-                  >
-                    API 키를 선택해주세요
-                  </button>
-                  <button 
-                    onClick={handleOpenApiKeySelector}
-                    className="bg-[#1e293b] text-white px-6 py-3.5 rounded-[14px] text-sm font-black hover:bg-[#0f172a] transition-all shadow-md active:scale-95"
-                  >
-                    확인
-                  </button>
-                </div>
-
-                <div className="flex flex-col space-y-4 pt-2">
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-[11px] text-gray-400 hover:text-[#6366f1] transition-colors flex items-center justify-end space-x-1.5 font-bold">
-                    <span>무료 API 키 발급받기</span>
-                    <ExternalLink size={12} />
-                  </a>
-                  <button onClick={handleOpenApiKeySelector} className="w-full bg-[#facc15] text-[#1e293b] font-black py-5 rounded-[22px] shadow-xl shadow-yellow-100 hover:bg-[#eab308] transition-all text-base animate-bounce-short">
-                    API 키를 확인해주세요
-                  </button>
-                </div>
-              </div>
-            ) : loadingFortune ? (
+            {loadingFortune ? (
               <div className="animate-pulse space-y-3"><div className="h-4 bg-gray-50 rounded w-3/4"></div><div className="h-4 bg-gray-50 rounded w-full"></div></div>
             ) : (
-              <p className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune || '프로필 정보를 입력하시면 AI 운세가 나타납니다.'}</p>
+              <div className="space-y-4">
+                {fortune ? (
+                  <p className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                    {fortune}
+                  </p>
+                ) : (
+                  <div className="flex flex-col items-center text-center py-6 space-y-4">
+                    <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                      <Key size={24} />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-slate-900">API 키가 필요합니다</p>
+                      <p className="text-xs text-slate-500 leading-relaxed">프로필 설정에서 고유 API 키를 입력하면<br/>맞춤형 AI 운세를 확인하실 수 있습니다.</p>
+                    </div>
+                    <button 
+                      onClick={() => setShowProfileModal(true)}
+                      className="text-xs font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 transition-colors"
+                    >
+                      API 키 설정하러 가기
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -408,7 +347,7 @@ const App: React.FC = () => {
           <div className="bg-white rounded-[40px] shadow-2xl shadow-gray-200/40 p-8 border border-gray-50 min-h-[400px]">
             <h3 className="text-lg font-black mb-8">오늘의 기록</h3>
             <div className="space-y-4">
-              {currentDayMemos.map(memo => (
+              {currentDayMemos.length > 0 ? currentDayMemos.map(memo => (
                 <div key={memo.id} className="group flex items-start justify-between bg-slate-50/50 p-5 rounded-3xl border border-transparent hover:border-indigo-100 hover:bg-white transition-all shadow-sm">
                   <div className="flex items-start space-x-4 flex-1">
                     <button onClick={() => handleToggleMemo(memo.id)} className="mt-1">{memo.completed ? <CheckCircle2 className="text-emerald-500" size={20} /> : <Circle className="text-gray-300" size={20} />}</button>
@@ -419,16 +358,16 @@ const App: React.FC = () => {
                   </div>
                   <button onClick={() => handleDeleteMemo(memo.id)} className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-rose-500 transition-all"><Trash2 size={16} /></button>
                 </div>
-              ))}
+              )) : (
+                <div className="text-center py-20">
+                   <p className="text-xs text-gray-400 font-bold">기록이 없습니다.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
       {showProfileModal && <ProfileSetup onSave={handleSaveProfile} onClose={() => setShowProfileModal(false)} currentProfile={profile} />}
-      <style>{`
-        @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-        .animate-bounce-short { animation: bounce-short 1.5s ease-in-out infinite; }
-      `}</style>
     </div>
   );
 };
